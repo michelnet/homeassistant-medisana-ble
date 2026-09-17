@@ -8,12 +8,9 @@ A local Home Assistant Bluetooth integration for **Medisana blood pressure monit
 and thermometers**, with automatic discovery and HACS custom-repository support.
 No Medisana account or cloud service is required.
 
-This integration combines
-[Medisana Blood Pressure](https://github.com/michelnet/homeassistant-medisana-blood-pressure)
-and [Medisana Thermometer](https://github.com/michelnet/homeassistant-medisana-thermometer)
-under the Home Assistant domain **`medisana_ble`**. Both device types use the blood
-pressure integration's connection, retry, measurement-ordering and state-restoration
-logic. Its icons and logos are retained as well.
+The Home Assistant domain is **`medisana_ble`**. Blood pressure monitors and
+thermometers share reliable connection, retry, measurement-ordering and
+state-restoration handling.
 
 The VitaDock+ icon with the Medisana wordmark comes from the
 [official Medisana app listing](https://play.google.com/store/apps/details?id=de.medisana.vitadockplus)
@@ -24,14 +21,14 @@ VitaDock+ and Medisana are trademarks of Medisana GmbH.
 
 | Model | Protocol and validation |
 | --- | --- |
-| BU-570 / BU 570 connect | Standard Blood Pressure service. Automatic discovery, setup and measurement transfer have been successfully tested with the combined integration on physical hardware. |
-| TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. Automatic discovery, setup and measurement transfer have been successfully tested with the combined integration on physical hardware. |
+| BU-570 / BU 570 connect | Standard Blood Pressure service. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
+| TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
 | BU-575, BU-584 and other models | Compatibility has not been confirmed. |
 
-The combined integration has been successfully tested in Home Assistant with both
-supported devices on real hardware. It is also covered by automated tests with
-**simulated Bluetooth hardware**. The Medisana name does not imply compatibility
-with every Medisana device.
+Medisana BLE has been successfully tested in Home Assistant with both supported
+devices on real hardware. It is also covered by automated tests with **simulated
+Bluetooth hardware**. The Medisana name does not imply compatibility with every
+Medisana device.
 
 ## Features
 
@@ -53,7 +50,7 @@ with every Medisana device.
 - A Bluetooth adapter managed by Home Assistant.
 - The device must be awake and within Bluetooth range during data transfer.
 
-Close VitaDock+ and disable any previous integration connected to the same device.
+Close VitaDock+ and disable any other integration connected to the same device.
 Other clients can otherwise compete for its Bluetooth connection.
 
 ## Installation
@@ -84,21 +81,6 @@ address, a name and the device type (**Blood pressure monitor** or **Thermometer
 The device can be asleep during manual setup; values remain unknown until the
 first complete measurement arrives.
 
-### Switching from the separate integrations
-
-The previous integrations use the domains `medisana_blood_pressure` and
-`medisana_dsas`. Their configuration entries, entity IDs and Recorder history are
-not migrated automatically to `medisana_ble`.
-
-1. Note the old entity IDs used by dashboards, automations and scripts.
-2. Disable the old entry for each device. Also disable `medisanabp_ble` for that
-   device if it is installed.
-3. Install **Medisana BLE**, restart Home Assistant and add each device again.
-4. Verify a new reading, then update references to the new entities.
-5. Remove the old integrations when they are no longer needed.
-
-Existing Recorder history remains attached to the old entity IDs.
-
 ## Automatic discovery
 
 The integration recognizes these connectable advertisement signatures:
@@ -112,12 +94,9 @@ The integration recognizes these connectable advertisement signatures:
 | Thermometer | Local name | `TS42B` |
 | Thermometer | Health Thermometer service UUID | `00001809-0000-1000-8000-00805f9b34fb` |
 
-The blood pressure manufacturer IDs and local name originate from the discovery
-signatures used by the [Medisana BP BLE integration](https://github.com/bkbilly/medisanabp_ble).
-The thermometer signature comes from the original Medisana thermometer integration.
-These signatures allow discovery when an advertisement omits the service UUID.
-The standard service UUIDs can also match another manufacturer's device: confirm
-only your Medisana device.
+The known manufacturer identifiers and local names allow discovery when an
+advertisement omits the service UUID. The standard service UUIDs can also match
+another manufacturer's device: confirm only your Medisana device.
 
 Once connected, the device must expose a measurement characteristic that supports
 indications or notifications:
@@ -172,11 +151,11 @@ options.
 
 ## Measurement handling
 
-Both device types use the blood pressure integration's session logic. A complete
-valid packet updates sensors immediately. The connection remains open for further
-records until the device disconnects or a three-minute session limit expires. The
-next attempt is allowed after at least 15 seconds if Home Assistant still knows a
-reachable Bluetooth path. Only one session runs per device.
+Both device types use the same session handling. A complete valid packet updates
+sensors immediately. The connection remains open for further records until the
+device disconnects or a three-minute session limit expires. The next attempt is
+allowed after at least 15 seconds if Home Assistant still knows a reachable
+Bluetooth path. Only one session runs per device.
 
 Blood pressure packets use IEEE-11073 SFLOAT decoding with mmHg/kPa conversion.
 Temperature packets use IEEE-11073 32-bit FLOAT decoding with Celsius/Fahrenheit

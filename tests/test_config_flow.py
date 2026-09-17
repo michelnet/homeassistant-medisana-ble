@@ -132,7 +132,7 @@ async def test_manual_setup_while_asleep(hass, address, device_type, mock_setup_
 
 
 async def test_manual_defaults_to_blood_pressure(hass):
-    """Manual setup uses a translated device selector and the combined name."""
+    """Manual setup uses a translated device selector and integration name."""
     result = await open_manual(hass)
     assert result["data_schema"]({CONF_ADDRESS: ADDRESS}) == {
         CONF_ADDRESS: ADDRESS,

@@ -28,22 +28,22 @@ and sensor platform with a simulated Bluetooth transport.
 
 ## Physical device checks
 
-The combined integration has completed successful Home Assistant hardware tests
-with both supported devices:
+Medisana BLE has completed successful Home Assistant hardware tests with both
+supported devices:
 
 - **BU-570 / BU 570 connect:** automatic discovery, setup and blood-pressure
   measurement transfer were successful.
 - **TM 750 connect:** automatic discovery as `TS42B`, setup and temperature
   measurement transfer were successful.
 
-These results validate the listed models with this combined integration. They do
-not establish compatibility with other Medisana devices. The following checklist
-can be used to repeat the physical tests on another Home Assistant installation:
+These results validate the listed models. They do not establish compatibility
+with other Medisana devices. The following checklist can be used to repeat the
+physical tests on another Home Assistant installation:
 
 1. Check the Home Assistant version (2026.9.0 or newer), install the component
    using the README instructions, and restart Home Assistant if newly installed.
-2. Confirm that a Home Assistant Bluetooth adapter is available. Disable the old
-   integration for the device and close VitaDock+.
+2. Confirm that a Home Assistant Bluetooth adapter is available. Close VitaDock+
+   and make sure no other integration is connected to the device.
 3. Wake the device and start its measurement or Bluetooth transfer. Check
    **Settings → Devices & services** for its discovery card and confirm it.
    If missing, try **Add integration → Medisana BLE → Find a nearby device**. For

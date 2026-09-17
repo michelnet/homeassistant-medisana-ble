@@ -9,8 +9,8 @@ DEFAULT_NAME = "Medisana BLE"
 DEFAULT_BLOOD_PRESSURE_NAME = "Medisana Blood Pressure"
 DEFAULT_THERMOMETER_NAME = "Medisana TM 750 connect"
 
-# Advertisement identifiers used by bkbilly/medisanabp_ble. These are observed
-# discovery signatures, not a claim that all matching hardware has been tested.
+# Known Medisana advertisement identifiers. These discovery signatures are not a
+# claim that every device exposing them has been tested.
 DISCOVERY_MANUFACTURER_IDS = frozenset({18498, 31256})
 DISCOVERY_LOCAL_NAMES = frozenset({"1872B"})
 THERMOMETER_LOCAL_NAMES = frozenset({"TS42B"})
