@@ -151,7 +151,7 @@ class MedisanaCoordinator(
                 if characteristic is None or not (
                     {"notify", "indicate"} & set(characteristic.properties)
                 ):
-                    _LOGGER.warning(
+                     _LOGGER.debug(
                         "Configured device does not expose the expected measurement "
                         "characteristic %s with notifications/indications; "
                         "check the selected Medisana device type",
@@ -165,16 +165,16 @@ class MedisanaCoordinator(
                 await self._async_read_optional_device_info()
                 self.async_update_listeners()
                 await disconnected.wait()
-        except BleakError, OSError, TimeoutError:
-            # No raw packets or health data in the logs. Sleeping devices and
-            # Occupied connection slots are expected; the next advertisement retries.
-            _LOGGER.debug("Bluetooth session ended or could not connect")
+        except (BleakError, OSError, TimeoutError):
+             # No raw packets or health data in the logs. Sleeping devices and
+             # Occupied connection slots are expected; the next advertisement retries.
+             _LOGGER.debug("Bluetooth session ended or could not connect")
         finally:
             if self._client is not None:
                 try:
                     async with asyncio.timeout(10):
                         await self._client.disconnect()
-                except BleakError, OSError, TimeoutError:
+                except (BleakError, OSError, TimeoutError):
                     _LOGGER.debug("Bluetooth disconnect did not complete")
                 self._client = None
             self._next_attempt = monotonic() + RETRY_INTERVAL
@@ -196,21 +196,27 @@ class MedisanaCoordinator(
         async def _read_characteristic(char, expected_uuid: str | None = None):
             char_uuid = getattr(char, "uuid", None)
             if not isinstance(char_uuid, str):
+                _LOGGER.debug("Characteristic missing UUID; skipping")
                 return None
             if expected_uuid is not None:
                 if char_uuid.lower() != expected_uuid.lower():
+                    _LOGGER.debug("UUID mismatch for %s; skipping", expected_uuid)
                     return None
             elif char_uuid.lower() not in supported_uuids:
+                _LOGGER.debug("Unsupported UUID; skipping")
                 return None
             try:
                 value = self._client.read_gatt_char(char)
-            except AttributeError, TypeError:
+            except (AttributeError, TypeError):
+                _LOGGER.debug("Characteristic read failed; skipping")
                 return None
             if value is None or not inspect.isawaitable(value):
+                _LOGGER.debug("Read returned non-waitable value; skipping")
                 return None
             try:
                 return await asyncio.wait_for(value, timeout=5)
             except TypeError:
+                _LOGGER.debug("Timeout reading characteristic; skipping")
                 return None
 
         battery_characteristic = self._client.services.get_characteristic(

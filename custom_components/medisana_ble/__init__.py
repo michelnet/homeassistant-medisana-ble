@@ -1,4 +1,4 @@
-"""Medisana measurements through Home Assistant's Bluetooth adapters."""
+"""Medisana BLE measurements through Home Assistant's Bluetooth adapters."""
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform

@@ -1,4 +1,4 @@
-# Testing Medisana
+# Testing Medisana BLE
 
 ## Automated simulation
 
@@ -40,7 +40,7 @@ device types.
    integration for the device and close VitaDock+.
 3. Wake the device and start its measurement or Bluetooth transfer. Check
    **Settings → Devices & services** for its discovery card and confirm it.
-   If missing, try **Add integration → Medisana → Find a nearby device**. For
+   If missing, try **Add integration → Medisana BLE → Find a nearby device**. For
    manual setup, enter its Bluetooth address and select the correct device type.
 4. Check the sensors for the selected device type:
    - **Blood pressure:** compare systolic pressure, diastolic pressure and pulse

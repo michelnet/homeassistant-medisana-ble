@@ -14,15 +14,15 @@ from pytest_homeassistant_custom_component.common import (
     mock_restore_cache_with_extra_data,
 )
 
-from custom_components.medisana.const import (
+from custom_components.medisana_ble.const import (
     DEVICE_TYPE_BLOOD_PRESSURE,
     DEVICE_TYPE_THERMOMETER,
 )
-from custom_components.medisana.coordinator import MedisanaCoordinator
-from custom_components.medisana.parser import (
+from custom_components.medisana_ble.coordinator import MedisanaCoordinator
+from custom_components.medisana_ble.parser import (
     BloodPressureMeasurement,
 )
-from custom_components.medisana.sensor import (
+from custom_components.medisana_ble.sensor import (
     BLOOD_PRESSURE_SENSORS,
     COMMON_SENSORS,
     THERMOMETER_SENSORS,
@@ -30,7 +30,7 @@ from custom_components.medisana.sensor import (
     MedisanaSensor,
     async_setup_entry,
 )
-from custom_components.medisana.thermometer import TemperatureMeasurement
+from custom_components.medisana_ble.thermometer import TemperatureMeasurement
 
 
 def make_coordinator(

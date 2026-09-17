@@ -13,14 +13,14 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.medisana.const import (
+from custom_components.medisana_ble.const import (
     CONF_USER_ID,
     DOMAIN,
 )
 
 pytestmark = pytest.mark.usefixtures("mock_bluetooth")
 ADDRESS = "AA:BB:CC:DD:EE:FF"
-MODULE = "custom_components.medisana.coordinator"
+MODULE = "custom_components.medisana_ble.coordinator"
 
 
 @pytest.fixture
@@ -40,14 +40,14 @@ def radio_hooks() -> Generator[tuple[MagicMock, MagicMock]]:
         yield register, unsubscribe
 
 
-def make_entry() -> MockConfigEntry:
-    """Create a device configuration as produced by the config flow."""
+def make_entry(device_type: str = DEVICE_TYPE_BLOOD_PRESSURE) -> MockConfigEntry:
+     """Create a device configuration as produced by the config flow."""
     return MockConfigEntry(
         domain=DOMAIN,
         title="Medisana BU-570",
         unique_id=ADDRESS,
-        data={CONF_ADDRESS: ADDRESS},
-    )
+        data={CONF_ADDRESS: ADDRESS, CONF_DEVICE_TYPE: device_type},
+     )
 
 
 def entry_entities(hass: HomeAssistant, entry: MockConfigEntry) -> dict[str, str]:
@@ -142,11 +142,6 @@ async def test_options_reload_replaces_runtime_without_cross_user_restore(
 
 
 async def test_home_assistant_stop_cleans_up_runtime(
-    hass: HomeAssistant, radio_hooks
-) -> None:
-    """Global shutdown releases Bluetooth listeners even without an entry unload."""
-    _, unsubscribe = radio_hooks
-    entry = make_entry()
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()

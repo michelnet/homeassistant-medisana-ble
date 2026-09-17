@@ -18,14 +18,14 @@ from homeassistant.config_entries import SOURCE_BLUETOOTH, ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.helpers import entity_registry as er
 
-from custom_components.medisana.const import (
+from custom_components.medisana_ble.const import (
     BLOOD_PRESSURE_CHARACTERISTIC_UUID,
     DOMAIN,
 )
 
 pytestmark = pytest.mark.usefixtures("mock_bluetooth")
 ADDRESS = "AA:BB:CC:DD:EE:FF"
-MODULE = "custom_components.medisana.coordinator"
+MODULE = "custom_components.medisana_ble.coordinator"
 
 # 2026-09-17 08:15:30, 120/80 mmHg, MAP 93, pulse 65, user 1, status 0.
 FIRST_PACKET = bytes.fromhex("1e 78 00 50 00 5d 00 ea 07 09 11 08 0f 1e 41 00 01 00 00")
@@ -65,7 +65,7 @@ async def test_discovery_measurements_and_reconnection(hass):
     manifest = json.loads(
         (
             Path(__file__).parents[1]
-            / "custom_components/medisana/manifest.json"
+            / "custom_components/medisana_ble/manifest.json"
         ).read_text()
     )
     matcher = IntegrationMatcher(

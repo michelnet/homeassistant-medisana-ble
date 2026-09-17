@@ -1,19 +1,12 @@
-# Medisana
+# Medisana BLE
 
 <p align="center">
-  <img src="custom_components/medisana/brand/icon@2x.png" alt="VitaDock+ by Medisana" width="180" height="180">
+  <img src="custom_components/medisana_ble/brand/medisana.png" alt="Medisana BLE" width="180" height="180">
 </p>
 
 A local Home Assistant Bluetooth integration for **Medisana blood pressure monitors
 and thermometers**, with automatic discovery and HACS custom-repository support.
 No Medisana account or cloud service is required.
-
-This integration combines
-[Medisana Blood Pressure](https://github.com/michelnet/homeassistant-medisana-blood-pressure)
-and [Medisana Thermometer](https://github.com/michelnet/homeassistant-medisana-thermometer)
-under the name **Medisana** and Home Assistant domain **`medisana`**. Both device
-types use the blood pressure integration's connection, retry, measurement-ordering
-and state-restoration logic. The icons and logos also come from that integration.
 
 The VitaDock+ icon with the Medisana wordmark comes from the
 [official Medisana app listing](https://play.google.com/store/apps/details?id=de.medisana.vitadockplus)
@@ -61,8 +54,8 @@ Other clients can otherwise compete for its Bluetooth connection.
 ### HACS
 
 1. Open **HACS → Custom repositories**.
-2. Add `https://github.com/michelnet/homeassistant-medisana` with category **Integration**.
-3. Download **Medisana** and restart Home Assistant.
+2. Add `https://github.com/michelnet/homeassistant-medisana-ble` with category **Integration**.
+3. Download **Medisana BLE** and restart Home Assistant.
 4. Wake your device and start a measurement or Bluetooth transfer.
 5. Open **Settings → Devices & services** and configure the discovered device.
 
@@ -71,37 +64,18 @@ HACS catalogue is not required.
 
 ### Manual installation
 
-1. Copy [`custom_components/medisana`](custom_components/medisana) into
-   `/config/custom_components/medisana` on Home Assistant. When using a source
+1. Copy [`custom_components/medisana_ble`](custom_components/medisana_ble) into
+    `/config/custom_components/medisana_ble` on Home Assistant. When using a source
    archive, extract it first and copy that component directory.
 2. Restart Home Assistant.
 3. Start a measurement or Bluetooth transfer on the device.
 4. Configure its discovery card under **Settings → Devices & services**.
 
-If no discovery card appears, use **Add integration → Medisana → Find a nearby
+If no discovery card appears, use **Add integration → Medisana BLE → Find a nearby
 device**. The fallback **Enter a Bluetooth address** accepts a known Bluetooth MAC
 address, a name and the device type (**Blood pressure monitor** or **Thermometer**).
 The device can be asleep during manual setup; values remain unknown until the
 first complete measurement arrives.
-
-### Switching from the separate integrations
-
-The previous integrations use the domains `medisana_blood_pressure` and
-`medisana_dsas`. Their configuration entries, entity identifiers and history are
-**not migrated automatically** to `medisana`.
-
-1. Note the existing entity IDs used by your dashboards and automations.
-2. Disable the old integration entries for the devices you are moving. Also disable
-   `medisanabp_ble` for the same device, if installed.
-3. Install **Medisana** and restart Home Assistant.
-4. Add each device again through discovery or manual setup.
-5. Verify new readings, then update dashboards, automations and scripts to use the
-   new entities. Remove the old integrations once you no longer need them.
-
-Existing Recorder history is not automatically linked to the new entities.
-
-## Automatic discovery
-
 The integration recognizes these connectable advertisement signatures:
 
 | Device type | Advertisement field | Value |
@@ -114,8 +88,7 @@ The integration recognizes these connectable advertisement signatures:
 | Thermometer | Health Thermometer service UUID | `00001809-0000-1000-8000-00805f9b34fb` |
 
 The blood pressure manufacturer IDs and local name originate from the discovery
-signatures used by
-[bkbilly/medisanabp_ble](https://github.com/bkbilly/medisanabp_ble/blob/main/custom_components/medisanabp_ble/manifest.json).
+signatures used by the [Medisana BP BLE integration](https://github.com/bkbilly/medisanabp_ble).
 The thermometer signature comes from the original Medisana thermometer integration.
 These signatures allow discovery when an advertisement omits the service UUID.
 The standard service UUIDs can also match another manufacturer's device: confirm

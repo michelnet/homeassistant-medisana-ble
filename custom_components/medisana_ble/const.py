@@ -1,11 +1,11 @@
-"""Constants for Medisana Bluetooth devices."""
+"""Constants for Medisana BLE Bluetooth devices."""
 
-DOMAIN = "medisana"
+DOMAIN = "medisana_ble"
 CONF_USER_ID = "user_id"
 CONF_DEVICE_TYPE = "device_type"
 DEVICE_TYPE_BLOOD_PRESSURE = "blood_pressure"
 DEVICE_TYPE_THERMOMETER = "thermometer"
-DEFAULT_NAME = "Medisana"
+DEFAULT_NAME = "Medisana BLE"
 DEFAULT_BLOOD_PRESSURE_NAME = "Medisana Blood Pressure"
 DEFAULT_THERMOMETER_NAME = "Medisana TM 750 connect"
 

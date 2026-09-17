@@ -35,6 +35,7 @@ BLOOD_PRESSURE_SENSORS = (
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
         suggested_unit_of_measurement=UnitOfPressure.MMHG,
+        suggested_display_precision=0,
         icon="mdi:heart-pulse",
     ),
     SensorEntityDescription(
@@ -43,6 +44,7 @@ BLOOD_PRESSURE_SENSORS = (
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
         suggested_unit_of_measurement=UnitOfPressure.MMHG,
+        suggested_display_precision=0,
         icon="mdi:heart-pulse",
     ),
     SensorEntityDescription(
@@ -51,12 +53,14 @@ BLOOD_PRESSURE_SENSORS = (
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
         suggested_unit_of_measurement=UnitOfPressure.MMHG,
+        suggested_display_precision=0,
         icon="mdi:heart-pulse",
     ),
     SensorEntityDescription(
         key="pulse",
         translation_key="pulse",
         native_unit_of_measurement="bpm",
+        suggested_display_precision=0,
         icon="mdi:heart-pulse",
     ),
     SensorEntityDescription(
@@ -64,6 +68,7 @@ BLOOD_PRESSURE_SENSORS = (
         translation_key="user_id",
         icon="mdi:account",
         entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
     ),
 )
 THERMOMETER_SENSORS = (
@@ -135,17 +140,19 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
     """Keep a measurement readable when the battery-powered device sleeps."""
 
     _attr_has_entity_name = True
-    _attr_native_value = None
+      _attr_native_value = None
 
     def __init__(
         self,
         coordinator: MedisanaCoordinator,
         description: SensorEntityDescription,
     ) -> None:
-        """Initialize a sensor with a stable Bluetooth address identifier."""
+        """Initialize a sensor with a stable, consistent entity name."""
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.address.lower()}_{description.key}"
+        # Use device address + device type as stable prefix for consistent IDs
+        prefix = f"{coordinator.address.lower()}_{coordinator.device_type}"
+        self._attr_unique_id = f"{prefix}_{description.key}"
         self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         is_thermometer = coordinator.device_type == DEVICE_TYPE_THERMOMETER
         self._attr_extra_state_attributes = (

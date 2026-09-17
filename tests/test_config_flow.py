@@ -15,11 +15,11 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.medisana.config_flow import (
+from custom_components.medisana_ble.config_flow import (
     MedisanaConfigFlow,
     get_device_type,
 )
-from custom_components.medisana.const import (
+from custom_components.medisana_ble.const import (
     BLOOD_PRESSURE_SERVICE_UUID,
     CONF_DEVICE_TYPE,
     CONF_USER_ID,
@@ -38,10 +38,7 @@ THERMOMETER_ADDRESS = "11:22:33:44:55:66"
 @pytest.fixture(autouse=True)
 def mock_setup_entry():
     with patch(
-        "custom_components.medisana.async_setup_entry", return_value=True
-    ) as mock:
-        yield mock
-
+         "custom_components.medisana_ble.async_setup_entry", return_value=True
 
 def discovery(signature="service", *, connectable=True, address=ADDRESS):
     name = {
@@ -106,7 +103,7 @@ async def open_manual(hass):
 @pytest.mark.parametrize(
     "device_type", [DEVICE_TYPE_BLOOD_PRESSURE, DEVICE_TYPE_THERMOMETER]
 )
-async def test_manual_setup_while_asleep(hass, address, device_type, mock_setup_entry):
+async def test_manual_setup_while_asleep(hass, address, device_type):
     with patch(
         "homeassistant.components.bluetooth.async_ble_device_from_address",
         side_effect=AssertionError("Setup must not connect"),
@@ -210,7 +207,7 @@ async def test_automatic_discovery_from_real_manifest(hass, signature, device_ty
     """Exercise HA's matcher, including devices with no advertised service UUID."""
     manifest = json.loads(
         (
-            Path(__file__).parents[1] / "custom_components/medisana/manifest.json"
+            Path(__file__).parents[1] / "custom_components/medisana_ble/manifest.json"
         ).read_text()
     )
     matcher = IntegrationMatcher(

@@ -10,8 +10,8 @@ from datetime import datetime
 from pathlib import Path
 
 # A private package loads both pure parsers without executing the integration.
-_PACKAGE_NAME = "medisana_thermometer_protocol_under_test"
-_COMPONENT_PATH = Path(__file__).resolve().parents[1] / "custom_components" / "medisana"
+_PACKAGE_NAME = "medisana_ble_thermometer_protocol_under_test"
+_COMPONENT_PATH = Path(__file__).resolve().parents[1] / "custom_components" / "medisana_ble"
 _PACKAGE = types.ModuleType(_PACKAGE_NAME)
 _PACKAGE.__path__ = [str(_COMPONENT_PATH)]
 sys.modules[_PACKAGE_NAME] = _PACKAGE

@@ -1,5 +1,5 @@
 {
-  "title": "Medisana",
+   "title": "Medisana BLE",
   "config": {
     "flow_title": "{name}",
     "step": {
