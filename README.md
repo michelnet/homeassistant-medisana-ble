@@ -145,6 +145,15 @@ its normal confirmation card; discovery does not silently create an entry.
 | Last measurement | Both | Device timestamp, interpreted in Home Assistant's time zone |
 | Last received | Both | Time Home Assistant accepted the displayed measurement |
 
+**Last measurement** reflects the date and time transmitted by the device. The
+integration applies Home Assistant's configured time zone but cannot detect an
+incorrectly set device clock. On the TM 750 connect, set the clock after first use
+and after replacing the batteries. With the device switched on, hold **SET** for
+about five seconds; use **SET** to change a value and the memory button to confirm
+the year, month, day, hour and minute. See the section *Setting the unit of measure,
+the time and the date* in the
+[TM 750 connect instruction manual](https://cloud.vitadock.com/doc/download/76145TM750connect24sprgWEBV2_1AM20210107.pdf).
+
 The temperature sensor exposes the optional `temperature_type` attribute when
 available. Standard device information includes manufacturer, model, firmware,
 serial number and hardware revision when supplied by the device.
