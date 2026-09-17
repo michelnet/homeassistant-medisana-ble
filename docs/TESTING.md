@@ -28,11 +28,17 @@ and sensor platform with a simulated Bluetooth transport.
 
 ## Physical device checks
 
-The original blood pressure integration reports a successful physical test with
-the **BU-570 / BU 570 connect**. The original thermometer integration reports a
-**TM 750 connect**, advertising as `TS42B`. These are results from the separate
-integrations; the combined version still needs physical validation for both
-device types.
+The combined integration has completed successful Home Assistant hardware tests
+with both supported devices:
+
+- **BU-570 / BU 570 connect:** automatic discovery, setup and blood-pressure
+  measurement transfer were successful.
+- **TM 750 connect:** automatic discovery as `TS42B`, setup and temperature
+  measurement transfer were successful.
+
+These results validate the listed models with this combined integration. They do
+not establish compatibility with other Medisana devices. The following checklist
+can be used to repeat the physical tests on another Home Assistant installation:
 
 1. Check the Home Assistant version (2026.9.0 or newer), install the component
    using the README instructions, and restart Home Assistant if newly installed.
@@ -66,8 +72,7 @@ its original timestamps.
 
 Record the device model, Home Assistant version and Bluetooth adapter, whether
 discovery succeeded, and whether readings never arrived or stopped updating after
-the first transfer. Distinguish testing this combined integration from testing one
-of its predecessors.
+the first transfer.
 
 For a failed test, enable debug logging from the integration's menu, repeat the
 transfer, then disable debug logging to collect the log. Inspect logs before

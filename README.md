@@ -24,14 +24,14 @@ VitaDock+ and Medisana are trademarks of Medisana GmbH.
 
 | Model | Protocol and validation |
 | --- | --- |
-| BU-570 / BU 570 connect | Standard Blood Pressure service. The original blood pressure integration reports a successful physical Home Assistant test. |
-| TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. The original thermometer integration reports testing this device. |
+| BU-570 / BU 570 connect | Standard Blood Pressure service. Automatic discovery, setup and measurement transfer have been successfully tested with the combined integration on physical hardware. |
+| TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. Automatic discovery, setup and measurement transfer have been successfully tested with the combined integration on physical hardware. |
 | BU-575, BU-584 and other models | Compatibility has not been confirmed. |
 
-The combined integration is covered by automated tests with **simulated Bluetooth
-hardware**. A physical test of this combined version is still needed for each
-device type. The Medisana name does not imply compatibility with every Medisana
-device.
+The combined integration has been successfully tested in Home Assistant with both
+supported devices on real hardware. It is also covered by automated tests with
+**simulated Bluetooth hardware**. The Medisana name does not imply compatibility
+with every Medisana device.
 
 ## Features
 
