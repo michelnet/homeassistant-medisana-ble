@@ -38,9 +38,10 @@ THERMOMETER_ADDRESS = "11:22:33:44:55:66"
 @pytest.fixture(autouse=True)
 def mock_setup_entry():
     with patch(
-         "custom_components.medisana_ble.async_setup_entry", return_value=True
-     ):
-        pass
+        "custom_components.medisana_ble.async_setup_entry", return_value=True
+    ) as mock:
+        yield mock
+
 
 def discovery(signature="service", *, connectable=True, address=ADDRESS):
     name = {
@@ -105,7 +106,7 @@ async def open_manual(hass):
 @pytest.mark.parametrize(
     "device_type", [DEVICE_TYPE_BLOOD_PRESSURE, DEVICE_TYPE_THERMOMETER]
 )
-async def test_manual_setup_while_asleep(hass, address, device_type):
+async def test_manual_setup_while_asleep(hass, address, device_type, mock_setup_entry):
     with patch(
         "homeassistant.components.bluetooth.async_ble_device_from_address",
         side_effect=AssertionError("Setup must not connect"),

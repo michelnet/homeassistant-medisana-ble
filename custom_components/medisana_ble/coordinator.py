@@ -151,13 +151,13 @@ class MedisanaCoordinator(
                 if characteristic is None or not (
                     {"notify", "indicate"} & set(characteristic.properties)
                 ):
-                     _LOGGER.debug(
+                    _LOGGER.debug(
                         "Configured device does not expose the expected measurement "
                         "characteristic %s with notifications/indications; "
                         "check the selected Medisana device type",
                         uuid,
                     )
-                return
+                    return
                 # Subscribe before optional reads so a short-lived measurement
                 # is received while battery and device details are being read.
                 # Bleak start_notify also enables indications (2A35 and 2A1C).
@@ -165,16 +165,16 @@ class MedisanaCoordinator(
                 await self._async_read_optional_device_info()
                 self.async_update_listeners()
                 await disconnected.wait()
-        except (BleakError, OSError, TimeoutError):
-             # No raw packets or health data in the logs. Sleeping devices and
-             # Occupied connection slots are expected; the next advertisement retries.
-             _LOGGER.debug("Bluetooth session ended or could not connect")
+        except BleakError, OSError, TimeoutError:
+            # No raw packets or health data in the logs. Sleeping devices and
+            # occupied connection slots are expected; the next advertisement retries.
+            _LOGGER.debug("Bluetooth session ended or could not connect")
         finally:
             if self._client is not None:
                 try:
                     async with asyncio.timeout(10):
                         await self._client.disconnect()
-                except (BleakError, OSError, TimeoutError):
+                except BleakError, OSError, TimeoutError:
                     _LOGGER.debug("Bluetooth disconnect did not complete")
                 self._client = None
             self._next_attempt = monotonic() + RETRY_INTERVAL
@@ -207,7 +207,7 @@ class MedisanaCoordinator(
                 return None
             try:
                 value = self._client.read_gatt_char(char)
-            except (AttributeError, TypeError):
+            except AttributeError, TypeError:
                 _LOGGER.debug("Characteristic read failed; skipping")
                 return None
             if value is None or not inspect.isawaitable(value):

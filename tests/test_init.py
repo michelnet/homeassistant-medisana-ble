@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from homeassistant.components.sensor import DATA_COMPONENT
 from homeassistant.config_entries import ConfigEntryState
-from homeassistant.const import CONF_ADDRESS
+from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
@@ -42,12 +42,6 @@ def radio_hooks() -> Generator[tuple[MagicMock, MagicMock]]:
         yield register, unsubscribe
 
 
-@pytest.fixture
-def test_unsubscribe() -> MagicMock:
-    """Provide an unsubscribe mock for cleanup tests."""
-    return MagicMock()
-
-
 def make_entry(device_type: str = DEVICE_TYPE_BLOOD_PRESSURE) -> MockConfigEntry:
     """Create a device configuration as produced by the config flow."""
     return MockConfigEntry(
@@ -55,7 +49,7 @@ def make_entry(device_type: str = DEVICE_TYPE_BLOOD_PRESSURE) -> MockConfigEntry
         title="Medisana BU-570",
         unique_id=ADDRESS,
         data={CONF_ADDRESS: ADDRESS, CONF_DEVICE_TYPE: device_type},
-     )
+    )
 
 
 def entry_entities(hass: HomeAssistant, entry: MockConfigEntry) -> dict[str, str]:
@@ -107,7 +101,7 @@ async def test_setup_and_unload_sleeping_device(
     assert entry.state is ConfigEntryState.NOT_LOADED
     assert coordinator._stopped
     assert not coordinator._unsubscribers
-    test_unsubscribe.assert_called_once()
+    unsubscribe.assert_called_once()
     assert all(
         hass.data[DATA_COMPONENT].get_entity(entity_id) is None
         for entity_id in entities.values()
@@ -141,7 +135,7 @@ async def test_options_reload_replaces_runtime_without_cross_user_restore(
     assert entry_entities(hass, entry) == entities
     assert hass.states.get(entities["systolic"]).state == "unknown"
     assert register.call_count == 2
-    test_unsubscribe.assert_called_once()
+    unsubscribe.assert_called_once()
 
     entry.runtime_data._async_handle_packet(pack("<BHHHHB", 0x0C, 118, 78, 91, 64, 0))
     assert float(hass.states.get(entities["systolic"]).state) == 118
@@ -149,3 +143,19 @@ async def test_options_reload_replaces_runtime_without_cross_user_restore(
     assert await hass.config_entries.async_unload(entry.entry_id)
 
 
+async def test_home_assistant_stop_cleans_up_runtime(
+    hass: HomeAssistant, radio_hooks
+) -> None:
+    """Global shutdown releases Bluetooth listeners even without entry unload."""
+    _, unsubscribe = radio_hooks
+    entry = make_entry()
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    coordinator = entry.runtime_data
+
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    assert coordinator._stopped
+    assert not coordinator._unsubscribers
+    unsubscribe.assert_called_once()

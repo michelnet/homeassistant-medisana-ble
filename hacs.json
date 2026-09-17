@@ -1,3 +1,4 @@
 {
-   "name": "Medisana BLE",
+  "name": "Medisana BLE",
+  "homeassistant": "2026.9.0"
 }

@@ -1,12 +1,19 @@
 # Medisana BLE
 
 <p align="center">
-  <img src="custom_components/medisana_ble/brand/medisana.png" alt="Medisana BLE" width="180" height="180">
+  <img src="custom_components/medisana_ble/brand/icon@2x.png" alt="Medisana BLE" width="180" height="180">
 </p>
 
 A local Home Assistant Bluetooth integration for **Medisana blood pressure monitors
 and thermometers**, with automatic discovery and HACS custom-repository support.
 No Medisana account or cloud service is required.
+
+This integration combines
+[Medisana Blood Pressure](https://github.com/michelnet/homeassistant-medisana-blood-pressure)
+and [Medisana Thermometer](https://github.com/michelnet/homeassistant-medisana-thermometer)
+under the Home Assistant domain **`medisana_ble`**. Both device types use the blood
+pressure integration's connection, retry, measurement-ordering and state-restoration
+logic. Its icons and logos are retained as well.
 
 The VitaDock+ icon with the Medisana wordmark comes from the
 [official Medisana app listing](https://play.google.com/store/apps/details?id=de.medisana.vitadockplus)
@@ -76,6 +83,24 @@ device**. The fallback **Enter a Bluetooth address** accepts a known Bluetooth M
 address, a name and the device type (**Blood pressure monitor** or **Thermometer**).
 The device can be asleep during manual setup; values remain unknown until the
 first complete measurement arrives.
+
+### Switching from the separate integrations
+
+The previous integrations use the domains `medisana_blood_pressure` and
+`medisana_dsas`. Their configuration entries, entity IDs and Recorder history are
+not migrated automatically to `medisana_ble`.
+
+1. Note the old entity IDs used by dashboards, automations and scripts.
+2. Disable the old entry for each device. Also disable `medisanabp_ble` for that
+   device if it is installed.
+3. Install **Medisana BLE**, restart Home Assistant and add each device again.
+4. Verify a new reading, then update references to the new entities.
+5. Remove the old integrations when they are no longer needed.
+
+Existing Recorder history remains attached to the old entity IDs.
+
+## Automatic discovery
+
 The integration recognizes these connectable advertisement signatures:
 
 | Device type | Advertisement field | Value |
@@ -187,6 +212,7 @@ The pure protocol tests also run without Home Assistant:
 
 ```sh
 python3 -m unittest discover -s tests -p test_parser.py
+python3 -m unittest discover -s tests -p test_thermometer.py
 ```
 
 GitHub Actions are provided for tests, Ruff, Hassfest and HACS validation. The HACS

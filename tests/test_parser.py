@@ -10,12 +10,12 @@ from pathlib import Path
 
 # Loading this pure module directly avoids executing the HA integration package.
 _SPEC = importlib.util.spec_from_file_location(
-     "medisana_ble_parser_under_test",
-    Path(
-        __file__
-    ).resolve().parents[1]
-     / "custom_components"
-     / "medisana_ble")
+    "medisana_ble_parser_under_test",
+    Path(__file__).resolve().parents[1]
+    / "custom_components"
+    / "medisana_ble"
+    / "parser.py",
+)
 assert _SPEC is not None and _SPEC.loader is not None
 parser = importlib.util.module_from_spec(_SPEC)
 sys.modules[_SPEC.name] = parser

@@ -16,11 +16,17 @@ from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.components.bluetooth.match import IntegrationMatcher
 from homeassistant.config_entries import SOURCE_BLUETOOTH, ConfigEntryState
 from homeassistant.data_entry_flow import FlowResultType
+from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from custom_components.medisana_ble.const import (
+    BATTERY_LEVEL_CHARACTERISTIC_UUID,
     BLOOD_PRESSURE_CHARACTERISTIC_UUID,
+    DEVICE_INFORMATION_CHARACTERISTIC_UUIDS,
+    DEVICE_TYPE_THERMOMETER,
     DOMAIN,
+    HEALTH_THERMOMETER_SERVICE_UUID,
+    TEMPERATURE_MEASUREMENT_UUID,
 )
 
 pytestmark = pytest.mark.usefixtures("mock_bluetooth")
@@ -64,8 +70,7 @@ async def test_discovery_measurements_and_reconnection(hass):
     )
     manifest = json.loads(
         (
-            Path(__file__).parents[1]
-            / "custom_components/medisana_ble/manifest.json"
+            Path(__file__).parents[1] / "custom_components/medisana_ble/manifest.json"
         ).read_text()
     )
     matcher = IntegrationMatcher(
@@ -163,3 +168,132 @@ async def test_discovery_measurements_and_reconnection(hass):
         assert await hass.config_entries.async_unload(entry.entry_id)
         assert coordinator._stopped
         assert coordinator._task is None
+
+
+async def test_thermometer_discovery_measurement_and_device_information(hass):
+    """Exercise the full thermometer path, including optional GATT metadata."""
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    device = BLEDevice(ADDRESS, "TS42B", {})
+    advertisement = AdvertisementData(
+        local_name="TS42B",
+        manufacturer_data={},
+        service_data={},
+        service_uuids=[HEALTH_THERMOMETER_SERVICE_UUID],
+        tx_power=None,
+        rssi=-55,
+        platform_data=(),
+    )
+    info = BluetoothServiceInfoBleak(
+        name="TS42B",
+        address=ADDRESS,
+        rssi=-55,
+        manufacturer_data={},
+        service_data={},
+        service_uuids=[HEALTH_THERMOMETER_SERVICE_UUID],
+        source="test-adapter",
+        device=device,
+        advertisement=advertisement,
+        connectable=True,
+        time=0,
+        tx_power=None,
+    )
+    measurement_characteristic = MagicMock(
+        uuid=TEMPERATURE_MEASUREMENT_UUID, properties=["indicate"]
+    )
+    values = {
+        BATTERY_LEVEL_CHARACTERISTIC_UUID: b"\x58",
+        DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["manufacturer_name"]: b"Medisana",
+        DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["model_number"]: b"TM 750 connect",
+        DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["firmware_revision"]: b"1.2.3",
+        DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["serial_number"]: b"TM750-123",
+        DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["hardware_revision"]: b"2.0",
+    }
+    characteristics = {
+        uuid: MagicMock(uuid=uuid, properties=["read"]) for uuid in values
+    }
+    characteristics[TEMPERATURE_MEASUREMENT_UUID] = measurement_characteristic
+    subscribed = asyncio.Event()
+    metadata_read = asyncio.Event()
+    disconnected_callback = None
+    client = MagicMock(is_connected=True)
+    client.services.get_characteristic.side_effect = characteristics.get
+    client.disconnect = AsyncMock()
+    client.start_notify = AsyncMock(side_effect=lambda *args: subscribed.set())
+
+    async def read_characteristic(characteristic):
+        value = values[characteristic.uuid]
+        if (
+            characteristic.uuid
+            == DEVICE_INFORMATION_CHARACTERISTIC_UUIDS["hardware_revision"]
+        ):
+            metadata_read.set()
+        return value
+
+    client.read_gatt_char = AsyncMock(side_effect=read_characteristic)
+
+    async def connect(*args, **kwargs):
+        nonlocal disconnected_callback
+        disconnected_callback = kwargs["disconnected_callback"]
+        return client
+
+    with (
+        patch(f"{MODULE}.bluetooth.async_register_callback", return_value=MagicMock()),
+        patch(f"{MODULE}.bluetooth.async_address_present", return_value=True),
+        patch(f"{MODULE}.bluetooth.async_ble_device_from_address", return_value=device),
+        patch(f"{MODULE}.establish_connection", side_effect=connect),
+    ):
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=info
+        )
+        result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        assert result["type"] is FlowResultType.CREATE_ENTRY
+        entry = result["result"]
+        assert entry.data["device_type"] == DEVICE_TYPE_THERMOMETER
+        await asyncio.wait_for(subscribed.wait(), 1)
+        await asyncio.wait_for(metadata_read.wait(), 1)
+        await hass.async_block_till_done()
+
+        entities = {
+            entity.unique_id.removeprefix(f"{ADDRESS.lower()}_"): entity.entity_id
+            for entity in er.async_entries_for_config_entry(
+                er.async_get(hass), entry.entry_id
+            )
+        }
+        assert set(entities) == {
+            "temperature",
+            "battery_level",
+            "last_measurement",
+            "last_received",
+        }
+        assert hass.states.get(entities["battery_level"]).state == "88"
+
+        # 2026-09-17 08:15:30, 36.5 °C, body temperature type.
+        payload = bytes.fromhex("06 6d 01 00 ff ea 07 09 11 08 0f 1e 02")
+        notify = client.start_notify.call_args.args[1]
+        notify(measurement_characteristic, bytearray(payload))
+        await hass.async_block_till_done()
+
+        temperature = hass.states.get(entities["temperature"])
+        assert float(temperature.state) == 36.5
+        assert temperature.attributes["unit_of_measurement"] == "°C"
+        assert temperature.attributes["temperature_type"] == 2
+        assert hass.states.get(entities["last_measurement"]).state == (
+            "2026-09-17T06:15:30+00:00"
+        )
+        assert hass.states.get(entities["last_received"]).state != "unknown"
+
+        registry_device = dr.async_entries_for_config_entry(
+            dr.async_get(hass), entry.entry_id
+        )[0]
+        assert registry_device.manufacturer == "Medisana"
+        assert registry_device.model == "TM 750 connect"
+        assert registry_device.serial_number == "TM750-123"
+        assert registry_device.sw_version == "1.2.3"
+        assert registry_device.hw_version == "2.0"
+
+        task = entry.runtime_data._task
+        disconnected_callback(client)
+        await asyncio.wait_for(task, 1)
+        assert hass.states.get(entities["temperature"]).state == "36.5"
+        client.disconnect.assert_awaited_once()
+        assert await hass.config_entries.async_unload(entry.entry_id)

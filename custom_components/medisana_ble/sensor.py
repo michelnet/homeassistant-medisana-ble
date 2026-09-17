@@ -150,9 +150,7 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
         """Initialize a sensor with a stable, consistent entity name."""
         super().__init__(coordinator)
         self.entity_description = description
-        # Use device address + device type as stable prefix for consistent IDs
-        prefix = f"{coordinator.address.lower()}_{coordinator.device_type}"
-        self._attr_unique_id = f"{prefix}_{description.key}"
+        self._attr_unique_id = f"{coordinator.address.lower()}_{description.key}"
         self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         is_thermometer = coordinator.device_type == DEVICE_TYPE_THERMOMETER
         self._attr_extra_state_attributes = (
@@ -164,8 +162,10 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
             name=coordinator.name,
             manufacturer="Medisana",
             model=(
-            "TM 750 connect" if is_thermometer else
-            "Bluetooth blood pressure monitor"),
+                "TM 750 connect"
+                if is_thermometer
+                else "Bluetooth blood pressure monitor"
+            ),
         )
 
     @property
@@ -181,13 +181,10 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
             return
 
         last_state = await self.async_get_last_state()
-        if (
-            last_state is None
-            or (
-                self.coordinator.device_type != DEVICE_TYPE_THERMOMETER
-                and last_state.attributes.get("configured_user_id")
-                != self.coordinator.user_id_filter
-            )
+        if last_state is None or (
+            self.coordinator.device_type != DEVICE_TYPE_THERMOMETER
+            and last_state.attributes.get("configured_user_id")
+            != self.coordinator.user_id_filter
         ):
             return
         last_data = await self.async_get_last_sensor_data()
