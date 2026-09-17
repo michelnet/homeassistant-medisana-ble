@@ -16,7 +16,6 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.medisana_ble.const import (
     DEVICE_TYPE_BLOOD_PRESSURE,
-    DEVICE_TYPE_THERMOMETER,
 )
 from custom_components.medisana_ble.coordinator import MedisanaCoordinator
 from custom_components.medisana_ble.parser import (
@@ -30,7 +29,6 @@ from custom_components.medisana_ble.sensor import (
     MedisanaSensor,
     async_setup_entry,
 )
-from custom_components.medisana_ble.thermometer import TemperatureMeasurement
 
 
 def make_coordinator(

@@ -39,6 +39,8 @@ THERMOMETER_ADDRESS = "11:22:33:44:55:66"
 def mock_setup_entry():
     with patch(
          "custom_components.medisana_ble.async_setup_entry", return_value=True
+     ):
+        pass
 
 def discovery(signature="service", *, connectable=True, address=ADDRESS):
     name = {

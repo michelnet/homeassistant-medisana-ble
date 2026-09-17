@@ -140,7 +140,7 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
     """Keep a measurement readable when the battery-powered device sleeps."""
 
     _attr_has_entity_name = True
-      _attr_native_value = None
+    _attr_native_value = None
 
     def __init__(
         self,
@@ -163,7 +163,9 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
             connections={(CONNECTION_BLUETOOTH, coordinator.address)},
             name=coordinator.name,
             manufacturer="Medisana",
-            model="TM 750 connect" if is_thermometer else "Bluetooth blood pressure monitor",
+            model=(
+            "TM 750 connect" if is_thermometer else
+            "Bluetooth blood pressure monitor"),
         )
 
     @property

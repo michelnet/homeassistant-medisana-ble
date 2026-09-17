@@ -157,7 +157,7 @@ class MedisanaCoordinator(
                         "check the selected Medisana device type",
                         uuid,
                     )
-                    return
+                return
                 # Subscribe before optional reads so a short-lived measurement
                 # is received while battery and device details are being read.
                 # Bleak start_notify also enables indications (2A35 and 2A1C).

@@ -9,7 +9,7 @@ import pytest
 from bleak import BleakError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.medisana_ble.const import DEVICE_TYPE_THERMOMETER, DOMAIN
+from custom_components.medisana_ble.const import DOMAIN
 from custom_components.medisana_ble.coordinator import MedisanaCoordinator
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
