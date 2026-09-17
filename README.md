@@ -1,7 +1,7 @@
 # Medisana BLE
 
 <p align="center">
-  <img src="custom_components/medisana_ble/brand/icon@2x.png" alt="Medisana BLE" width="180" height="180">
+  <img src="https://raw.githubusercontent.com/michelnet/homeassistant-medisana-ble/main/custom_components/medisana_ble/brand/icon%402x.png" alt="Medisana BLE" width="180" height="180">
 </p>
 
 A local Home Assistant Bluetooth integration for **Medisana blood pressure monitors
