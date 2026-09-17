@@ -1,0 +1,75 @@
+# Testing Medisana
+
+## Automated simulation
+
+Create the development environment described in the [README](../README.md), then
+run the complete suite:
+
+```sh
+.venv/bin/python -m pytest
+.venv/bin/ruff check .
+.venv/bin/ruff format --check .
+```
+
+Tests exercise protocol parsing, Home Assistant discovery and configuration,
+connection sessions, sensor values and restored state. Bluetooth communication is
+simulated. Test packets are synthetic inputs, not recordings of a person's
+measurements. Passing tests do not verify radio range, pairing behavior or
+physical device transmission timing.
+
+The focused end-to-end tests can be run with:
+
+```sh
+.venv/bin/python -m pytest tests/test_end_to_end.py -v
+```
+
+These use Home Assistant's discovery matching, configuration entries, coordinator
+and sensor platform with a simulated Bluetooth transport.
+
+## Physical device checks
+
+The original blood pressure integration reports a successful physical test with
+the **BU-570 / BU 570 connect**. The original thermometer integration reports a
+**TM 750 connect**, advertising as `TS42B`. These are results from the separate
+integrations; the combined version still needs physical validation for both
+device types.
+
+1. Check the Home Assistant version (2026.9.0 or newer), install the component
+   using the README instructions, and restart Home Assistant if newly installed.
+2. Confirm that a Home Assistant Bluetooth adapter is available. Disable the old
+   integration for the device and close VitaDock+.
+3. Wake the device and start its measurement or Bluetooth transfer. Check
+   **Settings → Devices & services** for its discovery card and confirm it.
+   If missing, try **Add integration → Medisana → Find a nearby device**. For
+   manual setup, enter its Bluetooth address and select the correct device type.
+4. Check the sensors for the selected device type:
+   - **Blood pressure:** compare systolic pressure, diastolic pressure and pulse
+     with the monitor. Check the timestamp and user ID when transmitted.
+   - **Thermometer:** compare the temperature with the device in the same unit.
+     Check the timestamp and `temperature_type` attribute when available.
+5. Check battery level and device information when the device supplies them.
+6. Let the device disconnect. Its last values should stay visible. Start another
+   measurement or transfer and verify that the values and reception time update.
+7. Restart Home Assistant while the device is asleep. Previous readings should
+   restore, then update again on the next transfer.
+8. For a blood pressure user filter, check the actual received user ID before
+   selecting it. A filter change should clear old readings until a matching
+   record arrives. Thermometers should offer no user filter.
+
+Older records cannot overwrite newer device timestamps within the same running
+integration. After a restart, restored values do not seed that timestamp ordering;
+the first accepted memory record can temporarily replace a newer restored reading.
+The integration does not import a complete device history into Recorder using
+its original timestamps.
+
+## Reporting a result
+
+Record the device model, Home Assistant version and Bluetooth adapter, whether
+discovery succeeded, and whether readings never arrived or stopped updating after
+the first transfer. Distinguish testing this combined integration from testing one
+of its predecessors.
+
+For a failed test, enable debug logging from the integration's menu, repeat the
+transfer, then disable debug logging to collect the log. Inspect logs before
+sharing them and omit passwords, access tokens and measurements you do not wish
+to share.

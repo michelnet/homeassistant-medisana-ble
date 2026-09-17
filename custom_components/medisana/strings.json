@@ -1,0 +1,104 @@
+{
+  "title": "Medisana",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Add a Medisana device",
+        "menu_options": {
+          "discovered": "Find a nearby device",
+          "manual": "Enter a Bluetooth address"
+        }
+      },
+      "discovered": {
+        "title": "Choose your Medisana device",
+        "description": "Select your Medisana blood pressure monitor or thermometer. It must be awake and transmitting over Bluetooth.",
+        "data": {
+          "address": "Medisana device"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Set up Medisana device",
+        "description": "Set up {name} ({address})? Confirm that this is your Medisana device. Measurements will arrive automatically when the device transmits. Close VitaDock+ and disable any other integration connected to this device."
+      },
+      "manual": {
+        "title": "Enter the device address",
+        "description": "Use this fallback if your device has not been discovered yet. Enter its Bluetooth address from a BLE scan and choose the device type. The device can be asleep during setup. A Home Assistant Bluetooth adapter is required.",
+        "data": {
+          "address": "Bluetooth MAC address",
+          "name": "Device name",
+          "device_type": "Device type"
+        },
+        "data_description": {
+          "address": "For example AA:BB:CC:DD:EE:FF."
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "Enter a valid Bluetooth MAC address, such as AA:BB:CC:DD:EE:FF.",
+      "invalid_name": "Enter a device name.",
+      "invalid_device_type": "Select a supported device type."
+    },
+    "abort": {
+      "already_configured": "This Medisana device is already configured.",
+      "not_supported": "No supported Medisana advertisement or active connection path was found.",
+      "no_devices_found": "No new Medisana devices found. Wake your device, enable its Bluetooth transfer, and try again. You can also enter its Bluetooth address manually."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Blood pressure user filter",
+        "description": "Use -1 to receive all users, including readings without a user ID. Use 0–254 to receive only that Bluetooth user ID. The ID may differ from the number shown on the monitor. Changing the filter clears the displayed values until a matching measurement arrives.",
+        "data": {
+          "user_id": "Bluetooth user ID (-1 = all users)"
+        }
+      }
+    },
+    "error": {
+      "invalid_user_id": "Enter a whole number from -1 to 254."
+    },
+    "abort": {
+      "no_options_available": "This thermometer has no configurable options."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "systolic": {
+        "name": "Systolic blood pressure"
+      },
+      "diastolic": {
+        "name": "Diastolic blood pressure"
+      },
+      "mean_arterial_pressure": {
+        "name": "Mean arterial pressure"
+      },
+      "pulse": {
+        "name": "Pulse"
+      },
+      "user_id": {
+        "name": "User ID"
+      },
+      "last_measurement": {
+        "name": "Last measurement"
+      },
+      "last_received": {
+        "name": "Last received"
+      },
+      "battery_level": {
+        "name": "Battery level"
+      },
+      "temperature": {
+        "name": "Temperature"
+      }
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "blood_pressure": "Blood pressure monitor",
+        "thermometer": "Thermometer"
+      }
+    }
+  }
+}

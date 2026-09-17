@@ -1,0 +1,104 @@
+{
+  "title": "Medisana",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Medisana-Gerät hinzufügen",
+        "menu_options": {
+          "discovered": "Gerät in der Nähe finden",
+          "manual": "Bluetooth-Adresse eingeben"
+        }
+      },
+      "discovered": {
+        "title": "Medisana-Gerät auswählen",
+        "description": "Wähle dein Medisana-Blutdruckmessgerät oder Thermometer. Es muss eingeschaltet sein und per Bluetooth übertragen.",
+        "data": {
+          "address": "Medisana-Gerät"
+        }
+      },
+      "bluetooth_confirm": {
+        "title": "Medisana-Gerät einrichten",
+        "description": "{name} ({address}) einrichten? Bestätige, dass dies dein Medisana-Gerät ist. Messwerte werden bei der Bluetooth-Übertragung automatisch empfangen. Schließe VitaDock+ und deaktiviere andere Integrationen, die mit diesem Gerät verbunden sind."
+      },
+      "manual": {
+        "title": "Adresse des Geräts eingeben",
+        "description": "Falls das Gerät noch nicht entdeckt wurde, gib seine Bluetooth-Adresse aus einem BLE-Scan ein und wähle den Gerätetyp. Das Gerät kann bei der Einrichtung ausgeschaltet sein. Home Assistant benötigt einen Bluetooth-Adapter.",
+        "data": {
+          "address": "Bluetooth-MAC-Adresse",
+          "name": "Gerätename",
+          "device_type": "Gerätetyp"
+        },
+        "data_description": {
+          "address": "Zum Beispiel AA:BB:CC:DD:EE:FF."
+        }
+      }
+    },
+    "error": {
+      "invalid_address": "Gib eine gültige Bluetooth-MAC-Adresse ein, etwa AA:BB:CC:DD:EE:FF.",
+      "invalid_name": "Gib einen Gerätenamen ein.",
+      "invalid_device_type": "Wähle einen unterstützten Gerätetyp."
+    },
+    "abort": {
+      "already_configured": "Dieses Medisana-Gerät ist bereits eingerichtet.",
+      "not_supported": "Keine unterstützte Medisana-Bluetooth-Ankündigung oder keine aktive Verbindung verfügbar.",
+      "no_devices_found": "Keine neuen Medisana-Geräte gefunden. Schalte dein Gerät ein, starte die Bluetooth-Übertragung und versuche es erneut. Alternativ kannst du die Bluetooth-Adresse eingeben."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Benutzerfilter für Blutdruck",
+        "description": "-1 empfängt alle Benutzer, auch Messungen ohne Benutzer-ID. Mit 0–254 wird nur diese Bluetooth-Benutzer-ID empfangen. Sie kann von der Nummer am Messgerät abweichen. Nach einer Änderung bleiben die Sensoren bis zur nächsten passenden Messung unbekannt.",
+        "data": {
+          "user_id": "Bluetooth-Benutzer-ID (-1 = alle)"
+        }
+      }
+    },
+    "error": {
+      "invalid_user_id": "Gib eine ganze Zahl von -1 bis 254 ein."
+    },
+    "abort": {
+      "no_options_available": "Für dieses Thermometer sind keine Einstellungen verfügbar."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "systolic": {
+        "name": "Systolischer Blutdruck"
+      },
+      "diastolic": {
+        "name": "Diastolischer Blutdruck"
+      },
+      "mean_arterial_pressure": {
+        "name": "Mittlerer arterieller Druck"
+      },
+      "pulse": {
+        "name": "Puls"
+      },
+      "user_id": {
+        "name": "Benutzer-ID"
+      },
+      "last_measurement": {
+        "name": "Letzte Messung"
+      },
+      "last_received": {
+        "name": "Letzter Empfang"
+      },
+      "battery_level": {
+        "name": "Batteriestand"
+      },
+      "temperature": {
+        "name": "Temperatur"
+      }
+    }
+  },
+  "selector": {
+    "device_type": {
+      "options": {
+        "blood_pressure": "Blutdruckmessgerät",
+        "thermometer": "Thermometer"
+      }
+    }
+  }
+}

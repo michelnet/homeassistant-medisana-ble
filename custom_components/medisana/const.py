@@ -1,0 +1,33 @@
+"""Constants for Medisana Bluetooth devices."""
+
+DOMAIN = "medisana"
+CONF_USER_ID = "user_id"
+CONF_DEVICE_TYPE = "device_type"
+DEVICE_TYPE_BLOOD_PRESSURE = "blood_pressure"
+DEVICE_TYPE_THERMOMETER = "thermometer"
+DEFAULT_NAME = "Medisana"
+DEFAULT_BLOOD_PRESSURE_NAME = "Medisana Blood Pressure"
+DEFAULT_THERMOMETER_NAME = "Medisana TM 750 connect"
+
+# Advertisement identifiers used by bkbilly/medisanabp_ble. These are observed
+# discovery signatures, not a claim that all matching hardware has been tested.
+DISCOVERY_MANUFACTURER_IDS = frozenset({18498, 31256})
+DISCOVERY_LOCAL_NAMES = frozenset({"1872B"})
+THERMOMETER_LOCAL_NAMES = frozenset({"TS42B"})
+
+BLOOD_PRESSURE_SERVICE_UUID = "00001810-0000-1000-8000-00805f9b34fb"
+BLOOD_PRESSURE_CHARACTERISTIC_UUID = "00002a35-0000-1000-8000-00805f9b34fb"
+HEALTH_THERMOMETER_SERVICE_UUID = "00001809-0000-1000-8000-00805f9b34fb"
+TEMPERATURE_MEASUREMENT_UUID = "00002a1c-0000-1000-8000-00805f9b34fb"
+BATTERY_LEVEL_CHARACTERISTIC_UUID = "00002a19-0000-1000-8000-00805f9b34fb"
+DEVICE_INFORMATION_SERVICE_UUID = "0000180a-0000-1000-8000-00805f9b34fb"
+DEVICE_INFORMATION_CHARACTERISTIC_UUIDS = {
+    "manufacturer_name": "00002a29-0000-1000-8000-00805f9b34fb",
+    "model_number": "00002a24-0000-1000-8000-00805f9b34fb",
+    "firmware_revision": "00002a26-0000-1000-8000-00805f9b34fb",
+    "serial_number": "00002a25-0000-1000-8000-00805f9b34fb",
+    "hardware_revision": "00002a27-0000-1000-8000-00805f9b34fb",
+}
+
+RETRY_INTERVAL = 15
+SESSION_TIMEOUT = 180
