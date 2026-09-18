@@ -54,6 +54,7 @@ class MedisanaCoordinator(
         )
         self.user_id_filter: int = entry.options.get(CONF_USER_ID, -1)
         self.received_at: datetime | None = None
+        self.measurement_sequence = 0
         self.battery_level: int | None = None
         self.device_info: dict[str, str] = {}
         self._entry = entry
@@ -295,8 +296,10 @@ class MedisanaCoordinator(
             and measurement.timestamp < self.data.timestamp
         ):
             return
-        if self.data == measurement and measurement.timestamp is not None:
-            return
+        # Every indication is a measurement event. The TM 750 can produce the
+        # same value and timestamp again, so payload equality cannot reliably
+        # distinguish a new measurement from a retransmission.
+        self.measurement_sequence += 1
         self.received_at = dt_util.utcnow()
         self.async_set_updated_data(measurement)
 

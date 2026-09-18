@@ -53,6 +53,7 @@ def make_coordinator(
     coordinator.device_info = {}
     coordinator.battery_level = None
     coordinator.received_at = None
+    coordinator.measurement_sequence = 0
     return cast(MedisanaCoordinator, coordinator)
 
 
@@ -155,26 +156,51 @@ async def test_device_time_and_reception_time_are_distinct(hass):
     assert hass.states.get(measurement_sensor.entity_id).state == "unknown"
 
 
-async def test_identical_temperature_readings_publish_separate_updates(hass):
-    """The thermometer can send a new reading with the same numeric value."""
+async def test_identical_temperature_measurements_publish_only_for_new_packets(hass):
+    """Equal readings update measurement entities, but metadata refreshes do not."""
     coordinator = make_coordinator(hass, device_type=DEVICE_TYPE_THERMOMETER)
-    sensor = await add_sensor(hass, coordinator, "temperature")
-    events = []
+    temperature_sensor = await add_sensor(hass, coordinator, "temperature")
+    measurement_sensor = await add_sensor(hass, coordinator, "last_measurement")
+    received_sensor = await add_sensor(hass, coordinator, "last_received")
+    events = {
+        temperature_sensor.entity_id: [],
+        measurement_sensor.entity_id: [],
+        received_sensor.entity_id: [],
+    }
     remove_listener = hass.bus.async_listen(
         EVENT_STATE_CHANGED,
         lambda event: (
-            events.append(event)
-            if event.data["entity_id"] == sensor.entity_id
+            events[event.data["entity_id"]].append(event)
+            if event.data["entity_id"] in events
             else None
         ),
     )
 
-    reading = TemperatureMeasurement(temperature=36.5, unit="°C")
-    coordinator.async_set_updated_data(reading)
-    coordinator.async_set_updated_data(reading)
+    reading = TemperatureMeasurement(
+        temperature=36.5,
+        unit="°C",
+        timestamp=datetime(2026, 9, 18, 8, 0),
+    )
+    for minute in (0, 1):
+        coordinator.measurement_sequence += 1
+        coordinator.received_at = datetime(2026, 9, 18, 8, minute, tzinfo=UTC)
+        coordinator.async_set_updated_data(reading)
+
+    # Device-information and battery refreshes use the same coordinator but
+    # must not make an old temperature look like a newly received measurement.
+    coordinator.async_update_listeners()
     remove_listener()
 
-    assert [event.data["new_state"].state for event in events] == ["36.5", "36.5"]
+    assert [
+        event.data["new_state"].state for event in events[temperature_sensor.entity_id]
+    ] == [
+        "36.5",
+        "36.5",
+    ]
+    assert len(events[measurement_sensor.entity_id]) == 2
+    assert [
+        event.data["new_state"].state for event in events[received_sensor.entity_id]
+    ] == ["2026-09-18T08:00:00+00:00", "2026-09-18T08:01:00+00:00"]
 
 
 @pytest.mark.parametrize(

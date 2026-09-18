@@ -153,10 +153,11 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
         self._attr_unique_id = f"{coordinator.address.lower()}_{description.key}"
         self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         is_thermometer = coordinator.device_type == DEVICE_TYPE_THERMOMETER
-        # A new thermometer reading can legitimately have the same value and
-        # no device timestamp. Publish every accepted reading so Home Assistant
-        # updates last_updated and state-based automations in that case too.
-        self._attr_force_update = is_thermometer and description.key == "temperature"
+        self._force_update_on_measurement = is_thermometer and description.key in {
+            "temperature",
+            "last_measurement",
+        }
+        self._last_measurement_sequence = coordinator.measurement_sequence
         self._attr_extra_state_attributes = (
             {} if is_thermometer else {"configured_user_id": coordinator.user_id_filter}
         )
@@ -204,8 +205,15 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
     @callback
     def _handle_coordinator_update(self) -> None:
         """Copy the accepted reading and update all its associated metadata."""
+        measurement_sequence = self.coordinator.measurement_sequence
+        self._attr_force_update = (
+            self._force_update_on_measurement
+            and measurement_sequence != self._last_measurement_sequence
+        )
         self._update_measurement()
         self.async_write_ha_state()
+        self._attr_force_update = False
+        self._last_measurement_sequence = measurement_sequence
 
     @callback
     def _update_measurement(self) -> None:

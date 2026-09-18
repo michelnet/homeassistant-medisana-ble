@@ -162,15 +162,18 @@ Temperature packets use IEEE-11073 32-bit FLOAT decoding with Celsius/Fahrenheit
 conversion. Packet lengths and optional fields are validated before readings are
 accepted.
 
-Within a running integration, older device timestamps cannot replace newer readings;
-duplicate timestamped packets are ignored. Missing optional measurement fields
-become unknown instead of inheriting values from a different measurement.
-Disconnects do not publish synthetic zero readings. Battery and device-information
-characteristics are optional.
+Within a running integration, older device timestamps cannot replace newer readings.
+Every received measurement indication is accepted even when its value and device
+timestamp equal the previous packet; the TM 750 can legitimately repeat both.
+Missing optional measurement fields become unknown instead of inheriting values
+from a different measurement. Disconnects do not publish synthetic zero readings.
+Battery and device-information characteristics are optional.
 
 Every accepted thermometer reading produces a Home Assistant state update, even
-when the numeric temperature is unchanged. This updates `last_updated` and allows
-automations to react to consecutive measurements with the same temperature.
+when the numeric temperature or device timestamp is unchanged. This updates
+`last_updated` and allows automations to react to consecutive equal measurements.
+Connection, battery and device-information refreshes alone do not mark the retained
+temperature as a new measurement.
 
 Restored sensor values survive Home Assistant restarts. After a restart, the first
 received memory record can temporarily replace a newer restored reading, until a

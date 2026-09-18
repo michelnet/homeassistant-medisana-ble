@@ -1,7 +1,7 @@
 """Connection lifecycle and measurement acceptance tests."""
 
 import asyncio
-from datetime import datetime
+from datetime import UTC, datetime
 from struct import pack
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -62,13 +62,22 @@ async def test_user_filter_including_zero_and_absent_user(coordinator):
     assert coordinator.data.user_id == 0
 
 
-async def test_old_records_and_duplicates_do_not_roll_back(coordinator):
-    coordinator._async_handle_packet(packet())
-    received_at = coordinator.received_at
-    coordinator._async_handle_packet(packet(day=15, systolic=150))
-    coordinator._async_handle_packet(packet())
+async def test_old_records_do_not_roll_back_and_equal_packets_are_received(coordinator):
+    listener = MagicMock()
+    unsubscribe = coordinator.async_add_listener(listener)
+    reception_times = [
+        datetime(2026, 9, 18, 8, 0, tzinfo=UTC),
+        datetime(2026, 9, 18, 8, 1, tzinfo=UTC),
+    ]
+    with patch(f"{MODULE}.dt_util.utcnow", side_effect=reception_times):
+        coordinator._async_handle_packet(packet())
+        coordinator._async_handle_packet(packet(day=15, systolic=150))
+        coordinator._async_handle_packet(packet())
     assert coordinator.data.systolic == 120
-    assert coordinator.received_at == received_at
+    assert coordinator.received_at == reception_times[1]
+    assert coordinator.measurement_sequence == 2
+    assert listener.call_count == 2
+    unsubscribe()
 
 
 async def test_shutdown_ignores_late_packet(coordinator):
