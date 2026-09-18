@@ -7,6 +7,7 @@ from unittest.mock import Mock
 
 import pytest
 from homeassistant.components.sensor import DATA_COMPONENT
+from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import HomeAssistant, State
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.setup import async_setup_component
@@ -16,6 +17,7 @@ from pytest_homeassistant_custom_component.common import (
 
 from custom_components.medisana_ble.const import (
     DEVICE_TYPE_BLOOD_PRESSURE,
+    DEVICE_TYPE_THERMOMETER,
 )
 from custom_components.medisana_ble.coordinator import MedisanaCoordinator
 from custom_components.medisana_ble.parser import (
@@ -29,6 +31,7 @@ from custom_components.medisana_ble.sensor import (
     MedisanaSensor,
     async_setup_entry,
 )
+from custom_components.medisana_ble.thermometer import TemperatureMeasurement
 
 
 def make_coordinator(
@@ -150,6 +153,28 @@ async def test_device_time_and_reception_time_are_distinct(hass):
     )
     coordinator.async_set_updated_data(blood_pressure(timestamp=None))
     assert hass.states.get(measurement_sensor.entity_id).state == "unknown"
+
+
+async def test_identical_temperature_readings_publish_separate_updates(hass):
+    """The thermometer can send a new reading with the same numeric value."""
+    coordinator = make_coordinator(hass, device_type=DEVICE_TYPE_THERMOMETER)
+    sensor = await add_sensor(hass, coordinator, "temperature")
+    events = []
+    remove_listener = hass.bus.async_listen(
+        EVENT_STATE_CHANGED,
+        lambda event: (
+            events.append(event)
+            if event.data["entity_id"] == sensor.entity_id
+            else None
+        ),
+    )
+
+    reading = TemperatureMeasurement(temperature=36.5, unit="°C")
+    coordinator.async_set_updated_data(reading)
+    coordinator.async_set_updated_data(reading)
+    remove_listener()
+
+    assert [event.data["new_state"].state for event in events] == ["36.5", "36.5"]
 
 
 @pytest.mark.parametrize(

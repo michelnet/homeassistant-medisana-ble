@@ -153,6 +153,10 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
         self._attr_unique_id = f"{coordinator.address.lower()}_{description.key}"
         self._attr_native_unit_of_measurement = description.native_unit_of_measurement
         is_thermometer = coordinator.device_type == DEVICE_TYPE_THERMOMETER
+        # A new thermometer reading can legitimately have the same value and
+        # no device timestamp. Publish every accepted reading so Home Assistant
+        # updates last_updated and state-based automations in that case too.
+        self._attr_force_update = is_thermometer and description.key == "temperature"
         self._attr_extra_state_attributes = (
             {} if is_thermometer else {"configured_user_id": coordinator.user_id_filter}
         )

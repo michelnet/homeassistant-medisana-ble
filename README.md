@@ -168,6 +168,10 @@ become unknown instead of inheriting values from a different measurement.
 Disconnects do not publish synthetic zero readings. Battery and device-information
 characteristics are optional.
 
+Every accepted thermometer reading produces a Home Assistant state update, even
+when the numeric temperature is unchanged. This updates `last_updated` and allows
+automations to react to consecutive measurements with the same temperature.
+
 Restored sensor values survive Home Assistant restarts. After a restart, the first
 received memory record can temporarily replace a newer restored reading, until a
 newer record arrives. If the device clock is moved backwards during operation,
