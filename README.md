@@ -163,10 +163,13 @@ conversion. Packet lengths and optional fields are validated before readings are
 accepted.
 
 Within a running integration, older device timestamps cannot replace newer readings.
-Every received measurement indication is accepted even when its value and device
-timestamp equal the previous packet; the TM 750 can legitimately repeat both.
-Missing optional measurement fields become unknown instead of inheriting values
-from a different measurement. Disconnects do not publish synthetic zero readings.
+For blood pressure monitors, the restored timestamp and measurement values are
+retained across a Home Assistant restart so the monitor's last stored record is
+not saved again. A different measurement with the same timestamp remains valid.
+Every thermometer indication is accepted even when its value and device timestamp
+equal the previous packet; the TM 750 can legitimately repeat both. Missing
+optional measurement fields become unknown instead of inheriting values from a
+different measurement. Disconnects do not publish synthetic zero readings.
 Battery and device-information characteristics are optional.
 
 Every accepted thermometer reading produces a Home Assistant state update, even
@@ -175,11 +178,11 @@ when the numeric temperature or device timestamp is unchanged. This updates
 Connection, battery and device-information refreshes alone do not mark the retained
 temperature as a new measurement.
 
-Restored sensor values survive Home Assistant restarts. After a restart, the first
-received memory record can temporarily replace a newer restored reading, until a
-newer record arrives. If the device clock is moved backwards during operation,
-reload the integration to reset timestamp ordering. The component does not import
-a complete device history into Recorder with its original timestamps.
+Restored sensor values survive Home Assistant restarts. Older blood-pressure
+records and an exact replay of the restored record are ignored until a newer record
+arrives. If the device clock is moved backwards during operation, reload the
+integration to reset timestamp ordering. The component does not import a complete
+device history into Recorder with its original timestamps.
 
 These are retained individual measurements, so sensors do not generate long-term
 averages over the time they remain displayed. Normal Home Assistant history,

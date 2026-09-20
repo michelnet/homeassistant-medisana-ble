@@ -9,7 +9,7 @@ import pytest
 from bleak import BleakError
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
-from custom_components.medisana_ble.const import DOMAIN
+from custom_components.medisana_ble.const import DEVICE_TYPE_THERMOMETER, DOMAIN
 from custom_components.medisana_ble.coordinator import MedisanaCoordinator
 
 ADDRESS = "AA:BB:CC:DD:EE:FF"
@@ -62,18 +62,62 @@ async def test_user_filter_including_zero_and_absent_user(coordinator):
     assert coordinator.data.user_id == 0
 
 
-async def test_old_records_do_not_roll_back_and_equal_packets_are_received(coordinator):
+async def test_blood_pressure_old_and_duplicate_records_are_ignored(coordinator):
+    listener = MagicMock()
+    unsubscribe = coordinator.async_add_listener(listener)
+    coordinator._async_handle_packet(packet())
+    received_at = coordinator.received_at
+    coordinator._async_handle_packet(packet(day=15, systolic=150))
+    coordinator._async_handle_packet(packet())
+    assert coordinator.data.systolic == 120
+    assert coordinator.received_at == received_at
+    assert coordinator.measurement_sequence == 1
+    assert listener.call_count == 1
+    unsubscribe()
+
+
+async def test_restored_blood_pressure_timestamp_blocks_restart_replay(coordinator):
+    coordinator.latest_timestamp = datetime(2026, 9, 16, 12, 30)
+    coordinator._restored_timestamp = datetime(2026, 9, 16, 12, 30)
+    coordinator._restored_values = {
+        "systolic": 120.0,
+        "diastolic": 80.0,
+        "mean_arterial_pressure": 93.0,
+        "pressure_unit": "mmHg",
+        "pulse": 65.0,
+        "user_id": 1,
+        "measurement_status": 0,
+    }
+    coordinator._async_handle_packet(packet(day=15, systolic=150))
+    coordinator._async_handle_packet(packet())
+    assert coordinator.data is None
+    assert coordinator.received_at is None
+    assert coordinator.measurement_sequence == 0
+
+    coordinator._async_handle_packet(packet(day=17, systolic=118))
+    assert coordinator.data.systolic == 118
+    assert coordinator.measurement_sequence == 1
+
+
+async def test_same_blood_pressure_timestamp_with_new_values_is_accepted(coordinator):
+    coordinator._async_handle_packet(packet(systolic=120))
+    coordinator._async_handle_packet(packet(systolic=125))
+    assert coordinator.data.systolic == 125
+    assert coordinator.measurement_sequence == 2
+
+
+async def test_equal_thermometer_packets_are_separate_measurements(coordinator):
+    coordinator.device_type = DEVICE_TYPE_THERMOMETER
     listener = MagicMock()
     unsubscribe = coordinator.async_add_listener(listener)
     reception_times = [
         datetime(2026, 9, 18, 8, 0, tzinfo=UTC),
         datetime(2026, 9, 18, 8, 1, tzinfo=UTC),
     ]
+    packet_data = bytes.fromhex("06 6d 01 00 ff ea 07 09 12 08 00 00 02")
     with patch(f"{MODULE}.dt_util.utcnow", side_effect=reception_times):
-        coordinator._async_handle_packet(packet())
-        coordinator._async_handle_packet(packet(day=15, systolic=150))
-        coordinator._async_handle_packet(packet())
-    assert coordinator.data.systolic == 120
+        coordinator._async_handle_packet(packet_data)
+        coordinator._async_handle_packet(packet_data)
     assert coordinator.received_at == reception_times[1]
     assert coordinator.measurement_sequence == 2
     assert listener.call_count == 2

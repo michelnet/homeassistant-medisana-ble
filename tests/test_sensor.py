@@ -1,23 +1,24 @@
 """Verify measurement lifetime, native units, timestamps and restore isolation."""
 
-import logging
 from datetime import UTC, datetime
-from typing import cast
 from unittest.mock import Mock
 
 import pytest
 from homeassistant.components.sensor import DATA_COMPONENT
 from homeassistant.const import EVENT_STATE_CHANGED
-from homeassistant.core import HomeAssistant, State
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.core import CoreState, HomeAssistant, State
 from homeassistant.setup import async_setup_component
 from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
     mock_restore_cache_with_extra_data,
 )
 
 from custom_components.medisana_ble.const import (
+    CONF_DEVICE_TYPE,
+    CONF_USER_ID,
     DEVICE_TYPE_BLOOD_PRESSURE,
     DEVICE_TYPE_THERMOMETER,
+    DOMAIN,
 )
 from custom_components.medisana_ble.coordinator import MedisanaCoordinator
 from custom_components.medisana_ble.parser import (
@@ -40,21 +41,17 @@ def make_coordinator(
     device_type: str = DEVICE_TYPE_BLOOD_PRESSURE,
 ) -> MedisanaCoordinator:
     """Use real coordinator listener behavior without connecting to Bluetooth."""
-    coordinator = DataUpdateCoordinator(
-        hass,
-        logging.getLogger(__name__),
-        name="Medisana test device",
-        config_entry=None,
+    entry = MockConfigEntry(
+        domain=DOMAIN,
+        title="Medisana test device",
+        data={
+            "address": "AA:BB:CC:DD:EE:FF",
+            CONF_DEVICE_TYPE: device_type,
+        },
+        options={CONF_USER_ID: user_id_filter},
     )
-    coordinator.address = "AA:BB:CC:DD:EE:FF"
-    coordinator.name = "Medisana test device"
-    coordinator.user_id_filter = user_id_filter
-    coordinator.device_type = device_type
-    coordinator.device_info = {}
-    coordinator.battery_level = None
-    coordinator.received_at = None
-    coordinator.measurement_sequence = 0
-    return cast(MedisanaCoordinator, coordinator)
+    entry.add_to_hass(hass)
+    return MedisanaCoordinator(hass, entry)
 
 
 async def add_sensor(
@@ -185,6 +182,7 @@ async def test_identical_temperature_measurements_publish_only_for_new_packets(h
         coordinator.measurement_sequence += 1
         coordinator.received_at = datetime(2026, 9, 18, 8, minute, tzinfo=UTC)
         coordinator.async_set_updated_data(reading)
+        await hass.async_block_till_done()
 
     # Device-information and battery refreshes use the same coordinator but
     # must not make an old temperature look like a newly received measurement.
@@ -243,6 +241,52 @@ async def test_restore_preserves_units_and_separates_user_filters(
     else:
         assert sensor.native_value is None
         assert hass.states.get(sensor.entity_id).state == "unknown"
+
+
+@pytest.mark.parametrize(
+    "core_state,seeds_replay_detection",
+    [(CoreState.starting, True), (CoreState.running, False)],
+)
+async def test_restore_seeds_blood_pressure_only_during_ha_startup(
+    hass, core_state, seeds_replay_detection
+):
+    """A restart remembers the record, while a manual reload resets ordering."""
+    await hass.config.async_set_time_zone("Europe/Zurich")
+    mock_restore_cache_with_extra_data(
+        hass,
+        [
+            (
+                State(
+                    "sensor.systolic",
+                    "120.0",
+                    {
+                        "configured_user_id": -1,
+                        "measurement_time": "2026-09-16T21:15:00+02:00",
+                        "measurement_status": 0,
+                        "pressure_unit": "mmHg",
+                        "unit_of_measurement": "mmHg",
+                        "user_id": 1,
+                    },
+                ),
+                {"native_value": 120.0, "native_unit_of_measurement": "mmHg"},
+            )
+        ],
+    )
+    coordinator = make_coordinator(hass)
+    previous_state = hass.state
+    hass.set_state(core_state)
+    try:
+        await add_sensor(hass, coordinator, "systolic")
+    finally:
+        hass.set_state(previous_state)
+
+    if seeds_replay_detection:
+        assert coordinator.latest_timestamp == datetime(2026, 9, 16, 21, 15)
+        assert coordinator._restored_values["systolic"] == 120.0
+        assert coordinator._restored_values["user_id"] == 1
+    else:
+        assert coordinator.latest_timestamp is None
+        assert not coordinator._restored_values
 
 
 async def test_current_reading_takes_priority_over_restored_state(hass):

@@ -63,10 +63,10 @@ physical tests on another Home Assistant installation:
    record arrives. Thermometers should offer no user filter.
 
 Older records cannot overwrite newer device timestamps within the same running
-integration. After a restart, restored values do not seed that timestamp ordering;
-the first accepted memory record can temporarily replace a newer restored reading.
-The integration does not import a complete device history into Recorder using
-its original timestamps.
+integration. After a restart, restored blood-pressure data also prevents the exact
+same or older stored records from being accepted again. Different records sharing
+a device timestamp remain valid. The integration does not import a complete device
+history into Recorder using its original timestamps.
 
 ## Reporting a result
 

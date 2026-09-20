@@ -194,6 +194,12 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
             return
         last_data = await self.async_get_last_sensor_data()
         if last_data is not None:
+            self.coordinator.restore_sensor_data(
+                self.entity_description.key,
+                last_data.native_value,
+                last_data.native_unit_of_measurement,
+                last_state.attributes,
+            )
             self._attr_native_value = last_data.native_value
             self._attr_native_unit_of_measurement = last_data.native_unit_of_measurement
             self._attr_extra_state_attributes = {

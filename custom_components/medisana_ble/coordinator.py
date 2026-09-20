@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import inspect
 import logging
+from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime, timedelta
 from time import monotonic
+from typing import Any
+from zoneinfo import ZoneInfo
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -15,7 +18,7 @@ from bleak_retry_connector import BleakClientWithServiceCache, establish_connect
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, EVENT_HOMEASSISTANT_STOP
-from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, CoreState, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
@@ -39,6 +42,9 @@ from .parser import BloodPressureMeasurement, parse_blood_pressure
 from .thermometer import TemperatureMeasurement, parse_temperature_measurement
 
 _LOGGER = logging.getLogger(__name__)
+_BLOOD_PRESSURE_VALUE_KEYS = frozenset(
+    {"systolic", "diastolic", "mean_arterial_pressure", "pulse"}
+)
 
 
 class MedisanaCoordinator(
@@ -55,6 +61,9 @@ class MedisanaCoordinator(
         self.user_id_filter: int = entry.options.get(CONF_USER_ID, -1)
         self.received_at: datetime | None = None
         self.measurement_sequence = 0
+        self.latest_timestamp: datetime | None = None
+        self._restored_timestamp: datetime | None = None
+        self._restored_values: dict[str, Any] = {}
         self.battery_level: int | None = None
         self.device_info: dict[str, str] = {}
         self._entry = entry
@@ -268,6 +277,63 @@ class MedisanaCoordinator(
         self.hass.loop.call_soon_threadsafe(self._async_handle_packet, bytes(data))
 
     @callback
+    def restore_sensor_data(
+        self,
+        key: str,
+        native_value: Any,
+        native_unit: str | None,
+        attributes: Mapping[str, Any],
+    ) -> None:
+        """Seed blood-pressure replay detection from restored sensor state."""
+        if (
+            self.device_type != DEVICE_TYPE_BLOOD_PRESSURE
+            or self.hass.state is CoreState.running
+        ):
+            return
+        value = attributes.get("measurement_time")
+        if value is None:
+            return
+        if isinstance(value, str):
+            try:
+                value = datetime.fromisoformat(value)
+            except ValueError:
+                return
+        elif not isinstance(value, datetime):
+            return
+        if value.tzinfo is not None:
+            value = value.astimezone(ZoneInfo(self.hass.config.time_zone)).replace(
+                tzinfo=None
+            )
+        if self._restored_timestamp is not None and value < self._restored_timestamp:
+            return
+        if self._restored_timestamp is None or value > self._restored_timestamp:
+            self._restored_values.clear()
+            self._restored_timestamp = value
+        self.latest_timestamp = value
+
+        measurement_keys = {*_BLOOD_PRESSURE_VALUE_KEYS, "user_id"}
+        if key in measurement_keys:
+            self._restored_values[key] = native_value
+        if key in {"systolic", "diastolic", "mean_arterial_pressure"}:
+            self._restored_values["pressure_unit"] = native_unit
+        for attribute in ("user_id", "measurement_status"):
+            if attribute in attributes:
+                self._restored_values[attribute] = attributes[attribute]
+
+    def _matches_restored_blood_pressure(
+        self, measurement: BloodPressureMeasurement
+    ) -> bool:
+        """Return whether a packet is the measurement restored at startup."""
+        if measurement.timestamp != self._restored_timestamp:
+            return False
+        compared_value = False
+        for key, value in self._restored_values.items():
+            compared_value |= key in _BLOOD_PRESSURE_VALUE_KEYS
+            if getattr(measurement, key) != value:
+                return False
+        return compared_value
+
+    @callback
     def _async_handle_packet(self, data: bytes) -> None:
         """Publish complete, validated measurements immediately."""
         if self._stopped:
@@ -287,13 +353,25 @@ class MedisanaCoordinator(
             and measurement.user_id != self.user_id_filter
         ):
             return
-        # A memory sync may send newest records first. Never replace a newer
-        # timestamp with an older one within this running coordinator.
+        # A memory sync may send newest records first. For blood-pressure
+        # monitors, the restored timestamp also prevents the last stored record
+        # from being saved again after Home Assistant restarts.
         if (
-            self.data is not None
-            and self.data.timestamp is not None
+            self.latest_timestamp is not None
             and measurement.timestamp is not None
-            and measurement.timestamp < self.data.timestamp
+            and measurement.timestamp < self.latest_timestamp
+        ):
+            return
+        if (
+            isinstance(measurement, BloodPressureMeasurement)
+            and measurement.timestamp is not None
+            and (
+                self.data == measurement
+                or (
+                    self.data is None
+                    and self._matches_restored_blood_pressure(measurement)
+                )
+            )
         ):
             return
         # Every indication is a measurement event. The TM 750 can produce the
@@ -301,6 +379,13 @@ class MedisanaCoordinator(
         # distinguish a new measurement from a retransmission.
         self.measurement_sequence += 1
         self.received_at = dt_util.utcnow()
+        if measurement.timestamp is not None and (
+            self.latest_timestamp is None
+            or measurement.timestamp > self.latest_timestamp
+        ):
+            self.latest_timestamp = measurement.timestamp
+            self._restored_timestamp = None
+            self._restored_values.clear()
         self.async_set_updated_data(measurement)
 
     async def async_stop(self) -> None:
