@@ -10,6 +10,7 @@ from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntityDescription,
+    SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import EntityCategory, UnitOfPressure, UnitOfTemperature
@@ -25,12 +26,12 @@ from .thermometer import TemperatureMeasurement
 
 PARALLEL_UPDATES = 0
 
-# These are the latest individual readings, potentially uploaded from device
-# memory. They are not continuous present-time measurements, so they do not opt
-# into time-weighted long-term statistics with a measurement state class.
+# Statistics summarize the retained values over time; device timestamps remain
+# available separately for interpreting individual measurements.
 BLOOD_PRESSURE_SENSORS = (
     SensorEntityDescription(
         key="systolic",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="systolic",
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
@@ -40,6 +41,7 @@ BLOOD_PRESSURE_SENSORS = (
     ),
     SensorEntityDescription(
         key="diastolic",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="diastolic",
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
@@ -49,6 +51,7 @@ BLOOD_PRESSURE_SENSORS = (
     ),
     SensorEntityDescription(
         key="mean_arterial_pressure",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="mean_arterial_pressure",
         device_class=SensorDeviceClass.PRESSURE,
         native_unit_of_measurement=UnitOfPressure.MMHG,
@@ -58,6 +61,7 @@ BLOOD_PRESSURE_SENSORS = (
     ),
     SensorEntityDescription(
         key="pulse",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="pulse",
         native_unit_of_measurement="bpm",
         suggested_display_precision=0,
@@ -74,6 +78,7 @@ BLOOD_PRESSURE_SENSORS = (
 THERMOMETER_SENSORS = (
     SensorEntityDescription(
         key="temperature",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="temperature",
         device_class=SensorDeviceClass.TEMPERATURE,
         native_unit_of_measurement=UnitOfTemperature.CELSIUS,
@@ -83,6 +88,7 @@ THERMOMETER_SENSORS = (
 COMMON_SENSORS = (
     SensorEntityDescription(
         key="battery_level",
+        state_class=SensorStateClass.MEASUREMENT,
         translation_key="battery_level",
         device_class=SensorDeviceClass.BATTERY,
         native_unit_of_measurement="%",

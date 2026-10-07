@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import Mock
 
 import pytest
-from homeassistant.components.sensor import DATA_COMPONENT
+from homeassistant.components.sensor import DATA_COMPONENT, SensorStateClass
 from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import CoreState, HomeAssistant, State
 from homeassistant.setup import async_setup_component
@@ -108,6 +108,59 @@ async def test_sleeping_device_preserves_accepted_measurement(hass):
     coordinator.async_update_listeners()
     assert hass.states.get(sensor.entity_id).state == "120.0"
     assert sensor.available
+
+
+@pytest.mark.parametrize(
+    "key,device_type,value,expected_state_class",
+    [
+        ("systolic", DEVICE_TYPE_BLOOD_PRESSURE, "120.0", SensorStateClass.MEASUREMENT),
+        ("diastolic", DEVICE_TYPE_BLOOD_PRESSURE, "80.0", SensorStateClass.MEASUREMENT),
+        (
+            "mean_arterial_pressure",
+            DEVICE_TYPE_BLOOD_PRESSURE,
+            "93.0",
+            SensorStateClass.MEASUREMENT,
+        ),
+        ("pulse", DEVICE_TYPE_BLOOD_PRESSURE, "65.0", SensorStateClass.MEASUREMENT),
+        ("temperature", DEVICE_TYPE_THERMOMETER, "36.5", SensorStateClass.MEASUREMENT),
+        (
+            "battery_level",
+            DEVICE_TYPE_BLOOD_PRESSURE,
+            "75",
+            SensorStateClass.MEASUREMENT,
+        ),
+        ("battery_level", DEVICE_TYPE_THERMOMETER, "75", SensorStateClass.MEASUREMENT),
+        ("user_id", DEVICE_TYPE_BLOOD_PRESSURE, "0", None),
+        ("last_measurement", DEVICE_TYPE_BLOOD_PRESSURE, None, None),
+        ("last_received", DEVICE_TYPE_BLOOD_PRESSURE, None, None),
+        ("last_measurement", DEVICE_TYPE_THERMOMETER, None, None),
+        ("last_received", DEVICE_TYPE_THERMOMETER, None, None),
+    ],
+)
+async def test_statistics_state_class_in_home_assistant(
+    hass, key, device_type, value, expected_state_class
+):
+    """Expose statistics metadata only for physical numeric measurements."""
+    coordinator = make_coordinator(hass, device_type=device_type)
+    sensor = await add_sensor(hass, coordinator, key)
+    coordinator.battery_level = 75
+    coordinator.received_at = datetime(2026, 9, 16, 20, 0, tzinfo=UTC)
+    coordinator.async_set_updated_data(
+        TemperatureMeasurement(
+            temperature=36.5,
+            unit="°C",
+            timestamp=datetime(2026, 9, 16, 21, 15),
+        )
+        if device_type == DEVICE_TYPE_THERMOMETER
+        else blood_pressure()
+    )
+    state = hass.states.get(sensor.entity_id)
+    if value is not None:
+        assert state.state == value
+    if expected_state_class is None:
+        assert "state_class" not in state.attributes
+    else:
+        assert state.attributes["state_class"] == expected_state_class
 
 
 async def test_missing_optional_value_does_not_mix_readings(hass):

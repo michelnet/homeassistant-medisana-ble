@@ -23,10 +23,11 @@ VitaDock+ and Medisana are trademarks of Medisana GmbH.
 | --- | --- |
 | BU-570 / BU 570 connect | Standard Blood Pressure service. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
 | TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
-| BU-575, BU-584 and other models | Compatibility has not been confirmed. |
+| BU 584 Connect | [User-confirmed](https://github.com/michelnet/homeassistant-medisana-ble/issues/1) on Home Assistant 2026.9.3 with an ESPHome Bluetooth proxy; automatic measurement transfer and retry worked without pairing. |
+| BU-575 and other models | Compatibility has not been confirmed. |
 
-Medisana BLE has been successfully tested in Home Assistant with both supported
-devices on real hardware. It is also covered by automated tests with **simulated
+Medisana BLE has been successfully tested in Home Assistant with the devices listed above
+on real hardware. It is also covered by automated tests with **simulated
 Bluetooth hardware**. The Medisana name does not imply compatibility with every
 Medisana device.
 
@@ -38,6 +39,7 @@ Medisana device.
 - Blood pressure: systolic, diastolic and mean arterial pressure, pulse and user ID.
 - Thermometer: temperature, with optional temperature-type information.
 - Shared battery level, measurement time and reception time sensors.
+- Home Assistant long-term statistics for blood pressure, pulse, temperature and battery level.
 - Optional Bluetooth user filter for blood pressure monitors, including valid user ID `0`.
 - Last readings stay available while the device sleeps and are restored after a Home Assistant restart.
 - Standard device information, when supplied by the device.
@@ -137,7 +139,14 @@ its normal confirmation card; discovery does not silently create an entry.
 
 **Last measurement** reflects the date and time transmitted by the device. The
 integration applies Home Assistant's configured time zone but cannot detect an
-incorrectly set device clock. On the TM 750 connect, set the clock after first use
+incorrectly set device clock. On both the **BU-570 / BU 570 connect** and the
+**TM 750 connect thermometer**, date and time can be set locally using the
+device's buttons, without pairing with VitaDock+. Set the device clock to the
+local date and time for Home Assistant's configured time zone. The integration
+reads the device timestamp; it does not set or synchronize the device clock.
+For the BU-570, use the date/time settings described in its instruction manual.
+
+On the TM 750 connect, set the clock after first use
 and after replacing the batteries. With the device switched on, hold **SET** for
 about five seconds; use **SET** to change a value and the memory button to confirm
 the year, month, day, hour and minute. See the section *Setting the unit of measure,
@@ -195,10 +204,22 @@ arrives. If the device clock is moved backwards during operation, reload the
 integration to reset timestamp ordering. The component does not import a complete
 device history into Recorder with its original timestamps.
 
-These are retained individual measurements, so sensors do not generate long-term
-averages over the time they remain displayed. Normal Home Assistant history,
-Recorder and backups can contain the readings. This driver's logs do not include
-raw measurement packets or health values.
+Systolic, diastolic and mean arterial pressure, pulse, temperature and battery
+level use `state_class: measurement` so Home Assistant Recorder can compile
+long-term statistics. User ID and timestamp sensors do not have a state class.
+Statistics use Home Assistant reception times and time-weighted averages of the
+retained values, rather than an average of individual device readings. They do
+not backfill measurements at their original device timestamps or preserve every
+individual reading after Recorder purges detailed history. This driver's logs
+do not include raw measurement packets or health values.
+
+A BU 584 that has never been paired with VitaDock+ may have an unset device clock
+starting in 2021. In that case, `last_measurement` reflects that device clock,
+while `last_received` shows when Home Assistant received the reading. The reading
+is still accepted; an old device timestamp alone does not make it invalid.
+For the BU-570 and TM 750 connect, an incorrect clock can be corrected locally
+on the device as described above. If a BU-570 clock is moved backwards, reload
+the integration afterwards to reset timestamp ordering.
 
 ## Development
 
