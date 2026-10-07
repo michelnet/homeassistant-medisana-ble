@@ -81,6 +81,17 @@ address, a name and the device type (**Blood pressure monitor** or **Thermometer
 The device can be asleep during manual setup; values remain unknown until the
 first complete measurement arrives.
 
+### Dependency installation errors
+
+If startup reports `Requirements for medisana_ble not found` for
+`bleak-retry-connector==4.7.0`, install version 1.0.4 or later and restart Home
+Assistant. Medisana BLE uses the connector version supplied by Home Assistant's
+Bluetooth integration through its `bluetooth_adapters` dependency instead of
+installing a second, fixed version. If the error persists, check the preceding
+package installation logs for download failures or dependency conflicts. Other
+custom Bluetooth integrations with fixed connector requirements may also need
+updating.
+
 ## Automatic discovery
 
 The integration recognizes these connectable advertisement signatures:
