@@ -24,6 +24,8 @@ VitaDock+ and Medisana are trademarks of Medisana GmbH.
 | BU-570 / BU 570 connect | Standard Blood Pressure service. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
 | TM 750 connect | Standard Health Thermometer service; advertises as `TS42B`. Automatic discovery, setup and measurement transfer have been successfully tested on physical hardware. |
 | BU 584 Connect | [User-confirmed](https://github.com/michelnet/homeassistant-medisana-ble/issues/1) on Home Assistant 2026.9.3 with an ESPHome Bluetooth proxy; automatic measurement transfer and retry worked without pairing. |
+| US / Walmart Medisana wrist monitor (`AOJ-35C`) | [User-confirmed](https://community.home-assistant.io/t/medisana-ble-blood-pressure-and-temperature-in-home-assistant-local-and-cloud-free/1027847/2) with an ESP32 Bluetooth proxy; automatic discovery, setup and measurement transfer reported working. |
+| US / Walmart Medisana cordless arm monitor (`ARM-30H`) | [User-confirmed](https://community.home-assistant.io/t/medisana-ble-blood-pressure-and-temperature-in-home-assistant-local-and-cloud-free/1027847/2) with an ESP32 Bluetooth proxy; automatic discovery, setup and measurement transfer reported working. |
 | BU-575 and other models | Compatibility has not been confirmed. |
 
 Medisana BLE has been successfully tested in Home Assistant with the devices listed above
@@ -82,6 +84,15 @@ device**. The fallback **Enter a Bluetooth address** accepts a known Bluetooth M
 address, a name and the device type (**Blood pressure monitor** or **Thermometer**).
 The device can be asleep during manual setup; values remain unknown until the
 first complete measurement arrives.
+
+Both US / Walmart monitors were reported to work with the integration's existing
+automatic discovery. The report does not identify which advertisement field
+triggered discovery. Their Bluetooth names are **`AOJ-35C`** (wrist) and
+**`ARM-30H`** (arm), with reported addresses starting with **`A4:C1:38`**.
+If manual setup is needed, enter the device's **full six-byte MAC address** from
+a BLE scan and select **Blood pressure monitor**; the prefix alone is not a
+complete address. The MAC prefix is only a hint for locating the device in a scan;
+automatic discovery uses the signatures listed below.
 
 ### Dependency installation errors
 
