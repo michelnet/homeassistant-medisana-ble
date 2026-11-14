@@ -1,6 +1,4 @@
-pytest-homeassistant-custom-component==0.13.365
+pytest-homeassistant[bluetooth]==2026.11.1
 ruff==0.16.8
-aiousbwatcher==1.1.2
-serialx==1.10.0
+# The Bluetooth fixtures simulate BlueZ even on macOS.
 dbus-fast==5.0.22
-habluetooth==6.26.11

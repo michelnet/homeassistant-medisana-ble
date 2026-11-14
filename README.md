@@ -5,7 +5,8 @@
 </p>
 
 A local Home Assistant Bluetooth integration for **Medisana blood pressure monitors
-and thermometers**, with automatic discovery and HACS custom-repository support.
+and thermometers**, with automatic discovery and support for the Home Assistant
+Marketplace and HACS custom repositories.
 No Medisana account or cloud service is required.
 
 The Home Assistant domain is **`medisana_ble`**. Blood pressure monitors and
@@ -50,34 +51,63 @@ Medisana device.
 
 ## Requirements
 
-- Home Assistant **2026.9.0 or newer**; the automated test environment uses 2026.9.2.
+- Home Assistant **2026.9.0 or newer**; the automated test environment uses 2026.11.1.
 - A Bluetooth adapter managed by Home Assistant.
 - The device must be awake and within Bluetooth range during data transfer.
 
 Close VitaDock+ and disable any other integration connected to the same device.
 Other clients can otherwise compete for its Bluetooth connection.
 
+<!-- ha-marketplace:exclude-start -->
+
 ## Installation
 
-### HACS
+### Marketplace (Home Assistant 2026.11 or newer)
+
+1. Open **Settings → Marketplace**. On first use, read and accept the Marketplace
+   notice to enable installation and updates.
+2. Select **Add from link** and enter
+   `https://github.com/michelnet/homeassistant-medisana-ble`.
+3. Connect GitHub if prompted, then select **Add**. If a content type is requested,
+   select **Integration**.
+4. Open **Medisana BLE**, select **Install** and follow the installation prompts.
+   Restart Home Assistant if requested.
+5. Continue with [Setup](#setup) below.
+
+This repository can be added from a link; inclusion in the default Marketplace
+catalog is not required. A GitHub connection is needed to add and update custom
+repositories.
+
+When upgrading Home Assistant from HACS to 2026.11 or newer, the Marketplace
+automatically takes over installed integrations, custom repositories and update
+entities. Medisana BLE does not need to be reinstalled or set up again. Open the
+Marketplace once and accept its notice to enable further updates. See the
+[official migration guide](https://www.home-assistant.io/integrations/marketplace/#coming-from-hacs).
+
+### HACS (Home Assistant 2026.9–2026.10)
 
 1. Open **HACS → Custom repositories**.
 2. Add `https://github.com/michelnet/homeassistant-medisana-ble` with category **Integration**.
 3. Download **Medisana BLE** and restart Home Assistant.
-4. Wake your device and start a measurement or Bluetooth transfer.
-5. Open **Settings → Devices & services** and configure the discovered device.
+4. Continue with [Setup](#setup) below.
 
-This repository is installed as a HACS custom repository. Inclusion in the default
-HACS catalogue is not required.
+On Home Assistant 2026.11 or newer, use the built-in Marketplace described above.
 
 ### Manual installation
 
 1. Copy [`custom_components/medisana_ble`](custom_components/medisana_ble) into
-    `/config/custom_components/medisana_ble` on Home Assistant. When using a source
+   `/config/custom_components/medisana_ble` on Home Assistant. When using a source
    archive, extract it first and copy that component directory.
 2. Restart Home Assistant.
-3. Start a measurement or Bluetooth transfer on the device.
-4. Configure its discovery card under **Settings → Devices & services**.
+3. Continue with [Setup](#setup) below.
+
+<!-- ha-marketplace:exclude-end -->
+
+## Setup
+
+Wake your device and start a measurement or Bluetooth transfer. Open
+**Settings → Devices & services** and configure its discovery card. If installation
+opens the setup flow directly, follow that flow to select your device.
 
 If no discovery card appears, use **Add integration → Medisana BLE → Find a nearby
 device**. The fallback **Enter a Bluetooth address** accepts a known Bluetooth MAC
@@ -244,6 +274,12 @@ python3.14 -m venv .venv
 .venv/bin/ruff format --check .
 ```
 
+Use Python **3.14.2 or newer** for the test environment. Tests use the official
+`pytest-homeassistant` fixtures with the Bluetooth extra, pinned to Home Assistant
+2026.11.1. When reusing an older development environment, uninstall
+`pytest-homeassistant-custom-component` before installing `requirements_test.txt`;
+the two fixture packages must not be installed together.
+
 Automated tests cover protocol decoding, discovery, configuration, user filters,
 Bluetooth sessions, state restoration and sensor setup. The Bluetooth transport
 and measurements are synthetic; those tests do not verify physical device timing
@@ -256,8 +292,11 @@ python3 -m unittest discover -s tests -p test_parser.py
 python3 -m unittest discover -s tests -p test_thermometer.py
 ```
 
-GitHub Actions are provided for tests, Ruff, Hassfest and HACS validation. The HACS
-Brands check is excluded for this custom repository.
+GitHub Actions are provided for tests, Ruff, Hassfest and Marketplace/HACS
+validation, including brand images. The Marketplace still uses the root
+`hacs.json` file and `hacs/action`; neither is renamed. The integration's manifest
+declares the **Health & wellbeing** category. See the
+[Marketplace publisher documentation](https://contributors.home-assistant.io/marketplace/guides/integrations/).
 
 Protocol references: [Home Assistant Bluetooth APIs](https://developers.home-assistant.io/docs/core/bluetooth/api/),
 [Bluetooth integration guidance](https://developers.home-assistant.io/docs/bluetooth/),

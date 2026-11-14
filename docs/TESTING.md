@@ -2,8 +2,10 @@
 
 ## Automated simulation
 
-Create the development environment described in the [README](../README.md), then
-run the complete suite:
+Create the development environment described in the [README](../README.md) using
+Python 3.14.2 or newer. The official `pytest-homeassistant[bluetooth]` package
+provides fixtures and Bluetooth test dependencies for Home Assistant 2026.11.1.
+Then run the complete suite:
 
 ```sh
 .venv/bin/python -m pytest
@@ -25,6 +27,30 @@ The focused end-to-end tests can be run with:
 
 These use Home Assistant's discovery matching, configuration entries, coordinator
 and sensor platform with a simulated Bluetooth transport.
+
+## Marketplace installation and migration
+
+On Home Assistant 2026.11 or newer, check the distribution separately from the
+simulated Bluetooth tests:
+
+1. Open **Settings → Marketplace**, accept its first-use notice and add
+   `https://github.com/michelnet/homeassistant-medisana-ble` using **Add from link**.
+   Connect GitHub if requested and select **Integration** if a type is needed.
+2. Install **Medisana BLE**. Follow any restart prompt, then verify that
+   **Medisana BLE** appears under **Settings → Devices & services → Add integration**.
+3. Complete the physical-device checks below.
+4. For an installation upgraded from HACS, confirm that Medisana BLE remains
+   installed and its custom repository and update entity have migrated. Existing
+   device configuration and entity IDs should be preserved without reinstallation.
+5. Install an available integration update through the Marketplace and restart
+   Home Assistant. Confirm that the configured devices and retained readings
+   remain available.
+
+The repository must retain `hacs.json` at its root and the complete integration
+under `custom_components/medisana_ble`, including its versioned manifest,
+translations and `brand` images. The existing `hacs/action` and Hassfest CI jobs
+validate publisher requirements; the Marketplace performs its own checks during
+installation. See the [official validation reference](https://contributors.home-assistant.io/marketplace/reference/validation/).
 
 ## Physical device checks
 

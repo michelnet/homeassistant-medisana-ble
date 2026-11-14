@@ -8,7 +8,7 @@ from homeassistant.components.sensor import DATA_COMPONENT, SensorStateClass
 from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import CoreState, HomeAssistant, State
 from homeassistant.setup import async_setup_component
-from pytest_homeassistant_custom_component.common import (
+from pytest_homeassistant.common import (
     MockConfigEntry,
     mock_restore_cache_with_extra_data,
 )
