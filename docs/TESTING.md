@@ -136,6 +136,65 @@ same or older stored records from being accepted again. Different records sharin
 a device timestamp remain valid. The integration does not import a complete device
 history into Recorder using its original timestamps.
 
+## External evidence and remaining checks
+
+Review date: **2026-11-15**. A report in another integration establishes what
+worked there, with its own connection handling and device firmware. The README
+therefore keeps external evidence separate from validation of this integration.
+
+- **BU 572 connect:** [jagula's integration](https://github.com/jagula/home-assistant-medisana-bu572#getestet)
+  explicitly reports a tested device and verifies raw user IDs 0 and 1. Its
+  coordinator requests pairing and writes Current Time; Medisana BLE has an
+  optional clock write but does not initiate pairing. Confirm authentication and
+  time-write/subscription ordering on the actual device before marking it tested here.
+- **BU 546 / BU 575 connect:** [Rudertier's supported-device list](https://github.com/Rudertier/medisana_blood_pressure#readme)
+  reports both models tested, and a [BU 575 user report](https://github.com/Rudertier/medisana_blood_pressure/issues/9)
+  describes successful repeated transfers with a nearby ESP32 proxy. The external
+  endpoint and flag layout match the standard driver; radio and retry behavior
+  still need validation here.
+- **BW 360 connect:** [bkbilly/medisanabp_ble PR 12](https://github.com/bkbilly/medisanabp_ble/pull/12)
+  documents a physical two-user device, `1810`/`2A35`, writable Current Time and
+  records replayed oldest first, grouped by user. Its real-device test uses HA
+  2026.9.4 and an ESPHome proxy. The report applies to the proposed branch, which
+  was open when reviewed. This driver's bounded sessions, user filter and timestamp
+  ordering address the same mechanisms but do not substitute for a hardware test.
+- **BU 580 connect:** a [positive report](https://github.com/bkbilly/medisanabp_ble/issues/4#issuecomment-2582846944)
+  coexists with [repeat synchronization failures](https://github.com/bkbilly/medisanabp_ble/issues/6).
+  Treat this as evidence of BLE measurement transfer, not reliable repeated
+  operation. Test several wakeups and a multi-record memory transfer here.
+- **BS 410 / 430 / 440 / 444:** the [BS 410 debugging thread](https://github.com/keptenkurk/BS440/issues/56#issuecomment-311601018),
+  [BS 444 owner confirmation](https://github.com/keptenkurk/BS440/issues/40#issuecomment-280841093),
+  [original BS440 implementation](https://github.com/keptenkurk/BS440#readme) and
+  [ESPHome support list](https://github.com/bwynants/weegschaal#support) document
+  these models at different evidence levels. The characteristic family matches
+  `78B2` with `8A21`/`8A22`/`8A81`/`8A82`. Check clock origin, address handling,
+  timing, packet markers and user assignment for each model. In particular,
+  external implementations infer clock variants differently; validate BS 440
+  timestamps against the device rather than relying on its model name alone.
+- **BS 550:** [issue 22](https://github.com/bwynants/weegschaal/issues/22)
+  reports successful operation after setting up a recognized scale user. It also
+  documents unassigned user ID 255. Medisana BLE currently accepts only scale user
+  IDs 0–8; guest packets with 255 are rejected. This remains a conditional candidate.
+- **BSA 45:** [issue 103](https://github.com/keptenkurk/BS440/issues/103)
+  reports working operation using BS 444 settings, a three-second connection
+  timeout and more attempts. Medisana BLE does not implement that model-specific
+  timeout strategy, so the report is conditional evidence only.
+- **BSA 41 connect:** [openScale issue 851](https://github.com/oliexdev/openScale/issues/851)
+  reports successful use through the BS 44x family handler. It does not include a
+  packet capture establishing compatibility with this parser; keep the model a
+  candidate here.
+- **PM 100 connect:** [frankhommers' tested-device list](https://github.com/frankhommers/ha-pulse-oximeter#tested-devices)
+  identifies ChoiceMMed MD300C208S and the standard PLX profile. Its endpoints and
+  SFLOAT field layout match the implemented profile. The report does not cover
+  legacy proprietary PM 100 variants.
+- **BUA 52 and MediTouch 2 connect dual:** this review found no concrete independent
+  working report. The [Gluko-Smart source](https://github.com/KathrinKollegger/Gluko-Smart-App/blob/master/app/src/main/java/com/example/gluko_smart/GlobalVariable.java)
+  names MediTouch 2 and the standard glucose endpoints; it does not establish a
+  tested connect/dual variant or a complete successful measurement exchange.
+
+These evidence updates change documentation only; they add no external driver
+implementation to the integration.
+
 ## Reporting a result
 
 Record the device model, Home Assistant version and Bluetooth adapter, whether
