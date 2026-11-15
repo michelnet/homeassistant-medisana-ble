@@ -1,5 +1,5 @@
 {
-   "title": "Medisana BLE",
+  "title": "Medisana BLE",
   "config": {
     "flow_title": "{name}",
     "step": {
@@ -12,7 +12,7 @@
       },
       "discovered": {
         "title": "Choose your Medisana device",
-        "description": "Select your Medisana blood pressure monitor or thermometer. It must be awake and transmitting over Bluetooth.",
+        "description": "Select your Medisana device. It must be awake and transmitting over Bluetooth.",
         "data": {
           "address": "Medisana device"
         }
@@ -32,6 +32,13 @@
         "data_description": {
           "address": "For example AA:BB:CC:DD:EE:FF."
         }
+      },
+      "scale": {
+        "title": "Choose your scale model",
+        "description": "Choose the clock format matching your scale before its clock is set and stored measurements are requested. You can change this later in the device options.",
+        "data": {
+          "scale_epoch": "Scale model / clock format"
+        }
       }
     },
     "error": {
@@ -48,18 +55,24 @@
   "options": {
     "step": {
       "init": {
-        "title": "Blood pressure user filter",
-        "description": "Use -1 to receive all users, including readings without a user ID. Use 0–254 to receive only that Bluetooth user ID. The ID may differ from the number shown on the monitor. Changing the filter clears the displayed values until a matching measurement arrives.",
+        "title": "User filter and scale clock",
+        "description": "Use -1 for all users, or select one transmitted Bluetooth user ID. It may differ from the number on the device. Classic scales use a clock origin of 2010 for BS 410/444 and 1970 for BS 430/440; choose the origin matching your scale model. Changing the user filter clears displayed values until a matching measurement arrives. The connection delay lets the scale finish computing composition; default: 12 seconds. For blood pressure monitors, optionally synchronize the device clock with Home Assistant when supported by the device.",
         "data": {
-          "user_id": "Bluetooth user ID (-1 = all users)"
+          "user_id": "Bluetooth user ID (-1 = all users)",
+          "scale_epoch": "Scale clock origin",
+          "connection_delay": "Delay before connecting (seconds)",
+          "sync_time": "Synchronize device clock"
         }
       }
     },
     "error": {
-      "invalid_user_id": "Enter a whole number from -1 to 254."
+      "invalid_user_id": "Enter a whole number from -1 to 254.",
+      "invalid_scale_epoch": "Choose 1970 or 2010 to match your scale model.",
+      "invalid_scale_user_id": "Enter a whole number from -1 to 8.",
+      "invalid_connection_delay": "Enter a whole number from 0 to 30."
     },
     "abort": {
-      "no_options_available": "This thermometer has no configurable options."
+      "no_options_available": "This device has no configurable options."
     }
   },
   "entity": {
@@ -90,6 +103,36 @@
       },
       "temperature": {
         "name": "Temperature"
+      },
+      "weight": {
+        "name": "Weight"
+      },
+      "body_fat": {
+        "name": "Body fat"
+      },
+      "body_water": {
+        "name": "Body water"
+      },
+      "muscle": {
+        "name": "Muscle percentage"
+      },
+      "bone_mass": {
+        "name": "Bone mass"
+      },
+      "bmi": {
+        "name": "BMI"
+      },
+      "basal_metabolism": {
+        "name": "Basal metabolism"
+      },
+      "oxygen_saturation": {
+        "name": "Oxygen saturation"
+      },
+      "pulse_amplitude_index": {
+        "name": "Pulse amplitude index"
+      },
+      "glucose": {
+        "name": "Blood glucose"
       }
     }
   },
@@ -97,7 +140,16 @@
     "device_type": {
       "options": {
         "blood_pressure": "Blood pressure monitor",
-        "thermometer": "Thermometer"
+        "thermometer": "Thermometer",
+        "scale": "Classic body analysis scale",
+        "pulse_oximeter": "Pulse oximeter",
+        "glucose": "Glucose meter"
+      }
+    },
+    "scale_epoch": {
+      "options": {
+        "1970": "1970 (BS 430 / BS 440)",
+        "2010": "2010 (BS 410 / BS 444)"
       }
     }
   }

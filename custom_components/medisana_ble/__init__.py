@@ -23,7 +23,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: MedisanaConfigEntry) -> 
 async def _async_options_updated(
     hass: HomeAssistant, entry: MedisanaConfigEntry
 ) -> None:
-    """Reload when the selected user changes."""
+    """Reload after user, scale clock, timing or synchronization options change."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 

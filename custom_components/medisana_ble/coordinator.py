@@ -8,6 +8,7 @@ import logging
 from collections.abc import Mapping
 from contextlib import suppress
 from datetime import datetime, timedelta
+from struct import pack
 from time import monotonic
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -27,29 +28,60 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BATTERY_LEVEL_CHARACTERISTIC_UUID,
     BLOOD_PRESSURE_CHARACTERISTIC_UUID,
+    CONF_CONNECTION_DELAY,
     CONF_DEVICE_TYPE,
+    CONF_SCALE_EPOCH,
+    CONF_SYNC_TIME,
     CONF_USER_ID,
+    CURRENT_TIME_UUID,
     DEFAULT_NAME,
+    DEFAULT_SCALE_CONNECTION_DELAY,
     DEVICE_INFORMATION_CHARACTERISTIC_UUIDS,
     DEVICE_TYPE_BLOOD_PRESSURE,
+    DEVICE_TYPE_GLUCOSE,
+    DEVICE_TYPE_PULSE_OXIMETER,
+    DEVICE_TYPE_SCALE,
     DEVICE_TYPE_THERMOMETER,
     DOMAIN,
+    GLUCOSE_CONTEXT_UUID,
+    GLUCOSE_MEASUREMENT_UUID,
+    PLX_CONTINUOUS_UUID,
+    PLX_SPOT_CHECK_UUID,
+    RECORD_ACCESS_CONTROL_UUID,
     RETRY_INTERVAL,
+    SCALE_BODY_UUID,
+    SCALE_COMMAND_UUID,
+    SCALE_USER_UUID,
+    SCALE_WEIGHT_UUID,
     SESSION_TIMEOUT,
     TEMPERATURE_MEASUREMENT_UUID,
+    USER_FILTER_DEVICE_TYPES,
 )
+from .glucose import GlucoseDecoder, GlucoseMeasurement
 from .parser import BloodPressureMeasurement, parse_blood_pressure
+from .pulse_oximeter import PulseOximeterMeasurement, parse_plx
+from .scale import (
+    ScaleDecoder,
+    ScaleMeasurement,
+    default_scale_epoch,
+    scale_time_command,
+)
 from .thermometer import TemperatureMeasurement, parse_temperature_measurement
 
 _LOGGER = logging.getLogger(__name__)
 _BLOOD_PRESSURE_VALUE_KEYS = frozenset(
     {"systolic", "diastolic", "mean_arterial_pressure", "pulse"}
 )
+type MedisanaMeasurement = (
+    BloodPressureMeasurement
+    | TemperatureMeasurement
+    | ScaleMeasurement
+    | GlucoseMeasurement
+    | PulseOximeterMeasurement
+)
 
 
-class MedisanaCoordinator(
-    DataUpdateCoordinator[BloodPressureMeasurement | TemperatureMeasurement]
-):
+class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
     """Keep the last reading; a sleeping instrument is normal."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
@@ -59,6 +91,16 @@ class MedisanaCoordinator(
             CONF_DEVICE_TYPE, DEVICE_TYPE_BLOOD_PRESSURE
         )
         self.user_id_filter: int = entry.options.get(CONF_USER_ID, -1)
+        self.sync_time: bool = entry.options.get(CONF_SYNC_TIME, False)
+        self.scale_epoch = entry.options.get(
+            CONF_SCALE_EPOCH,
+            entry.data.get(CONF_SCALE_EPOCH, default_scale_epoch(entry.title)),
+        )
+        self._scale_decoder = ScaleDecoder(self.scale_epoch)
+        self.scale_connection_delay = entry.options.get(
+            CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
+        )
+        self._glucose_decoder = GlucoseDecoder()
         self.received_at: datetime | None = None
         self.measurement_sequence = 0
         self.latest_timestamp: datetime | None = None
@@ -136,12 +178,16 @@ class MedisanaCoordinator(
                 self.hass.loop.call_soon_threadsafe(disconnected.set)
 
         try:
-            device = bluetooth.async_ble_device_from_address(
-                self.hass, self.address, connectable=True
-            )
-            if device is None:
-                return
             async with asyncio.timeout(SESSION_TIMEOUT):
+                if self.device_type == DEVICE_TYPE_SCALE:
+                    # BS 444 advertises while composition is still being
+                    # computed. Let it finish before initiating a connection.
+                    await asyncio.sleep(self.scale_connection_delay)
+                device = bluetooth.async_ble_device_from_address(
+                    self.hass, self.address, connectable=True
+                )
+                if device is None:
+                    return
                 self._client = await establish_connection(
                     BleakClientWithServiceCache,
                     device,
@@ -152,26 +198,10 @@ class MedisanaCoordinator(
                 )
                 if not self._client.is_connected:
                     return
-                uuid = (
-                    TEMPERATURE_MEASUREMENT_UUID
-                    if self.device_type == DEVICE_TYPE_THERMOMETER
-                    else BLOOD_PRESSURE_CHARACTERISTIC_UUID
-                )
-                characteristic = self._client.services.get_characteristic(uuid)
-                if characteristic is None or not (
-                    {"notify", "indicate"} & set(characteristic.properties)
-                ):
-                    _LOGGER.debug(
-                        "Configured device does not expose the expected measurement "
-                        "characteristic %s with notifications/indications; "
-                        "check the selected Medisana device type",
-                        uuid,
-                    )
+                self._scale_decoder = ScaleDecoder(self.scale_epoch)
+                self._glucose_decoder = GlucoseDecoder()
+                if not await self._async_subscribe():
                     return
-                # Subscribe before optional reads so a short-lived measurement
-                # is received while battery and device details are being read.
-                # Bleak start_notify also enables indications (2A35 and 2A1C).
-                await self._client.start_notify(characteristic, self._notification)
                 await self._async_read_optional_device_info()
                 self.async_update_listeners()
                 await disconnected.wait()
@@ -189,6 +219,106 @@ class MedisanaCoordinator(
                 self._client = None
             self._next_attempt = monotonic() + RETRY_INTERVAL
             self._task = None
+
+    def _notifiable_characteristic(self, uuid: str):
+        """Use only endpoints that actually support push measurements."""
+        characteristic = self._client.services.get_characteristic(uuid)
+        if characteristic is not None and {"notify", "indicate"} & set(
+            characteristic.properties
+        ):
+            return characteristic
+        return None
+
+    async def _async_subscribe(self) -> bool:
+        """Subscribe before any reads or commands that can trigger a transfer."""
+        if self.device_type == DEVICE_TYPE_SCALE:
+            weight = self._notifiable_characteristic(SCALE_WEIGHT_UUID)
+            command = self._client.services.get_characteristic(SCALE_COMMAND_UUID)
+            if (
+                weight is None
+                or command is None
+                or not {"write", "write-without-response"} & set(command.properties)
+            ):
+                return False
+            await self._client.start_notify(weight, self._notification)
+            for uuid in (SCALE_BODY_UUID, SCALE_USER_UUID):
+                if characteristic := self._notifiable_characteristic(uuid):
+                    await asyncio.sleep(0.3)
+                    await self._client.start_notify(characteristic, self._notification)
+            await asyncio.sleep(0.3)
+            await self._client.write_gatt_char(
+                command,
+                scale_time_command(dt_util.utcnow(), self.scale_epoch),
+                response="write" in command.properties,
+            )
+            return True
+        if self.device_type == DEVICE_TYPE_PULSE_OXIMETER:
+            subscribed = False
+            for uuid in (PLX_SPOT_CHECK_UUID, PLX_CONTINUOUS_UUID):
+                if characteristic := self._notifiable_characteristic(uuid):
+                    await self._client.start_notify(characteristic, self._notification)
+                    subscribed = True
+            return subscribed
+        uuid = {
+            DEVICE_TYPE_BLOOD_PRESSURE: BLOOD_PRESSURE_CHARACTERISTIC_UUID,
+            DEVICE_TYPE_THERMOMETER: TEMPERATURE_MEASUREMENT_UUID,
+            DEVICE_TYPE_GLUCOSE: GLUCOSE_MEASUREMENT_UUID,
+        }.get(self.device_type)
+        if (
+            uuid is None
+            or (characteristic := self._notifiable_characteristic(uuid)) is None
+        ):
+            _LOGGER.debug("Configured measurement profile is not available")
+            return False
+        await self._client.start_notify(characteristic, self._notification)
+        if self.device_type == DEVICE_TYPE_BLOOD_PRESSURE and self.sync_time:
+            await self._async_sync_clock()
+        if self.device_type == DEVICE_TYPE_GLUCOSE:
+            if context := self._notifiable_characteristic(GLUCOSE_CONTEXT_UUID):
+                await self._client.start_notify(context, self._notification)
+            # Some MediTouch devices automatically send records without RACP.
+            # For standard devices, request records only after all callbacks
+            # are ready. Opcode 01 reports records; no delete command is used.
+            if (
+                racp := self._notifiable_characteristic(RECORD_ACCESS_CONTROL_UUID)
+            ) is not None and "write" in racp.properties:
+                try:
+                    await self._client.start_notify(racp, self._racp_notification)
+                    await self._client.write_gatt_char(racp, b"\x01\x01", response=True)
+                except BleakError, OSError, TimeoutError:
+                    _LOGGER.debug("Stored glucose records could not be requested")
+        return True
+
+    async def _async_sync_clock(self) -> None:
+        """Optionally supply Current Time after the measurement callback is ready."""
+        characteristic = self._client.services.get_characteristic(CURRENT_TIME_UUID)
+        if characteristic is None or not {"write", "write-without-response"} & set(
+            characteristic.properties
+        ):
+            return
+        now = dt_util.utcnow().astimezone(ZoneInfo(self.hass.config.time_zone))
+        # Bluetooth Current Time: Exact Time 256 followed by Adjust Reason.
+        value = pack(
+            "<H8B",
+            now.year,
+            now.month,
+            now.day,
+            now.hour,
+            now.minute,
+            now.second,
+            now.isoweekday(),
+            0,
+            2,
+        )
+        try:
+            await self._client.write_gatt_char(
+                characteristic, value, response="write" in characteristic.properties
+            )
+        except BleakError, OSError, TimeoutError:
+            _LOGGER.debug("Device clock could not be synchronized")
+
+    def _racp_notification(self, characteristic, data: bytearray) -> None:
+        """RACP acknowledgements carry no measurements; keep receiving live data."""
 
     async def _async_read_optional_device_info(self) -> None:
         """Read optional battery and device information when a monitor exposes it."""
@@ -274,7 +404,12 @@ class MedisanaCoordinator(
         self, characteristic: BleakGATTCharacteristic, data: bytearray
     ) -> None:
         """Copy the packet before dispatching it to Home Assistant's loop."""
-        self.hass.loop.call_soon_threadsafe(self._async_handle_packet, bytes(data))
+        uuid = getattr(characteristic, "uuid", None)
+        self.hass.loop.call_soon_threadsafe(
+            self._async_handle_packet,
+            bytes(data),
+            uuid.lower() if isinstance(uuid, str) else None,
+        )
 
     @callback
     def restore_sensor_data(
@@ -334,30 +469,52 @@ class MedisanaCoordinator(
         return compared_value
 
     @callback
-    def _async_handle_packet(self, data: bytes) -> None:
+    def _async_handle_packet(self, data: bytes, uuid: str | None = None) -> None:
         """Publish complete, validated measurements immediately."""
         if self._stopped:
             return
         try:
-            measurement = (
-                parse_temperature_measurement(data)
-                if self.device_type == DEVICE_TYPE_THERMOMETER
-                else parse_blood_pressure(data)
-            )
+            if self.device_type == DEVICE_TYPE_THERMOMETER:
+                measurement = parse_temperature_measurement(data)
+            elif self.device_type == DEVICE_TYPE_PULSE_OXIMETER:
+                measurement = parse_plx(data, continuous=uuid == PLX_CONTINUOUS_UUID)
+            elif self.device_type == DEVICE_TYPE_GLUCOSE:
+                measurement = (
+                    self._glucose_decoder.context(data)
+                    if uuid == GLUCOSE_CONTEXT_UUID
+                    else self._glucose_decoder.measurement(data)
+                )
+            elif self.device_type == DEVICE_TYPE_SCALE:
+                measurement = self._scale_decoder.feed(uuid or SCALE_WEIGHT_UUID, data)
+            elif self.device_type == DEVICE_TYPE_BLOOD_PRESSURE:
+                measurement = parse_blood_pressure(data)
+            else:
+                return
         except ValueError:
             _LOGGER.debug("Ignoring malformed measurement packet (%d bytes)", len(data))
             return
+        if measurement is None:
+            return
         if (
-            isinstance(measurement, BloodPressureMeasurement)
+            self.device_type in USER_FILTER_DEVICE_TYPES
             and self.user_id_filter != -1
             and measurement.user_id != self.user_id_filter
         ):
+            return
+        if isinstance(measurement, GlucoseMeasurement):
+            if isinstance(self.data, GlucoseMeasurement) and (
+                measurement.sequence_number < self.data.sequence_number
+                or measurement == self.data
+            ):
+                return
+        elif isinstance(measurement, ScaleMeasurement) and measurement == self.data:
             return
         # A memory sync may send newest records first. For blood-pressure
         # monitors, the restored timestamp also prevents the last stored record
         # from being saved again after Home Assistant restarts.
         if (
             self.latest_timestamp is not None
+            and not isinstance(measurement, GlucoseMeasurement)
             and measurement.timestamp is not None
             and measurement.timestamp < self.latest_timestamp
         ):

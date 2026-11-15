@@ -12,7 +12,7 @@
       },
       "discovered": {
         "title": "Medisana-Gerät auswählen",
-        "description": "Wähle dein Medisana-Blutdruckmessgerät oder Thermometer. Es muss eingeschaltet sein und per Bluetooth übertragen.",
+        "description": "Wähle dein Medisana-Gerät. Es muss eingeschaltet sein und per Bluetooth übertragen.",
         "data": {
           "address": "Medisana-Gerät"
         }
@@ -32,6 +32,13 @@
         "data_description": {
           "address": "Zum Beispiel AA:BB:CC:DD:EE:FF."
         }
+      },
+      "scale": {
+        "title": "Waagenmodell auswählen",
+        "description": "Wähle das Datumsformat passend zu deinem Waagenmodell, bevor die Uhr eingestellt und gespeicherte Messungen abgerufen werden. Diese Option kannst du später in den Einstellungen ändern.",
+        "data": {
+          "scale_epoch": "Waagenmodell / Datumsformat"
+        }
       }
     },
     "error": {
@@ -48,18 +55,24 @@
   "options": {
     "step": {
       "init": {
-        "title": "Benutzerfilter für Blutdruck",
-        "description": "-1 empfängt alle Benutzer, auch Messungen ohne Benutzer-ID. Mit 0–254 wird nur diese Bluetooth-Benutzer-ID empfangen. Sie kann von der Nummer am Messgerät abweichen. Nach einer Änderung bleiben die Sensoren bis zur nächsten passenden Messung unbekannt.",
+        "title": "Benutzer und Waagenuhr",
+        "description": "Mit -1 empfängst du alle Benutzer. Wähle die übertragene Bluetooth-Benutzer-ID für eine einzelne Person; sie kann von der Anzeige am Gerät abweichen. Bei klassischen Waagen: 2010 für BS 410/444, 1970 für BS 430/440. Der Zeitursprung muss zum Waagenmodell passen. Nach einer Änderung des Benutzerfilters bleiben die Sensoren bis zur nächsten passenden Messung unbekannt. Die Wartezeit lässt der Waage Zeit für die Körperanalyse; Standard: 12 Sekunden. Bei Blutdruckmessgeräten kannst du optional die Uhr mit Home Assistant synchronisieren, wenn das Gerät dies unterstützt.",
         "data": {
-          "user_id": "Bluetooth-Benutzer-ID (-1 = alle)"
+          "user_id": "Bluetooth-Benutzer-ID (-1 = alle)",
+          "scale_epoch": "Zeitursprung der Waage",
+          "connection_delay": "Wartezeit vor der Verbindung (Sekunden)",
+          "sync_time": "Geräteuhr synchronisieren"
         }
       }
     },
     "error": {
-      "invalid_user_id": "Gib eine ganze Zahl von -1 bis 254 ein."
+      "invalid_user_id": "Gib eine ganze Zahl von -1 bis 254 ein.",
+      "invalid_scale_epoch": "Wähle 1970 oder 2010 passend zum Waagenmodell.",
+      "invalid_scale_user_id": "Gib eine ganze Zahl von -1 bis 8 ein.",
+      "invalid_connection_delay": "Gib eine ganze Zahl von 0 bis 30 ein."
     },
     "abort": {
-      "no_options_available": "Für dieses Thermometer sind keine Einstellungen verfügbar."
+      "no_options_available": "Für dieses Gerät sind keine Einstellungen verfügbar."
     }
   },
   "entity": {
@@ -90,6 +103,36 @@
       },
       "temperature": {
         "name": "Temperatur"
+      },
+      "weight": {
+        "name": "Gewicht"
+      },
+      "body_fat": {
+        "name": "Körperfett"
+      },
+      "body_water": {
+        "name": "Körperwasser"
+      },
+      "muscle": {
+        "name": "Muskelanteil"
+      },
+      "bone_mass": {
+        "name": "Knochenmasse"
+      },
+      "bmi": {
+        "name": "BMI"
+      },
+      "basal_metabolism": {
+        "name": "Grundumsatz"
+      },
+      "oxygen_saturation": {
+        "name": "Sauerstoffsättigung"
+      },
+      "pulse_amplitude_index": {
+        "name": "Pulsamplitudenindex"
+      },
+      "glucose": {
+        "name": "Blutzucker"
       }
     }
   },
@@ -97,7 +140,16 @@
     "device_type": {
       "options": {
         "blood_pressure": "Blutdruckmessgerät",
-        "thermometer": "Thermometer"
+        "thermometer": "Thermometer",
+        "scale": "Klassische Körperanalysewaage",
+        "pulse_oximeter": "Pulsoximeter",
+        "glucose": "Blutzuckermessgerät"
+      }
+    },
+    "scale_epoch": {
+      "options": {
+        "1970": "1970 (BS 430 / BS 440)",
+        "2010": "2010 (BS 410 / BS 444)"
       }
     }
   }

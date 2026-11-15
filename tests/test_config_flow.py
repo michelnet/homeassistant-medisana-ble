@@ -21,13 +21,23 @@ from custom_components.medisana_ble.config_flow import (
 )
 from custom_components.medisana_ble.const import (
     BLOOD_PRESSURE_SERVICE_UUID,
+    CONF_CONNECTION_DELAY,
     CONF_DEVICE_TYPE,
+    CONF_SCALE_EPOCH,
+    CONF_SYNC_TIME,
     CONF_USER_ID,
     DEFAULT_NAME,
+    DEVICE_NAMES,
     DEVICE_TYPE_BLOOD_PRESSURE,
+    DEVICE_TYPE_GLUCOSE,
+    DEVICE_TYPE_PULSE_OXIMETER,
+    DEVICE_TYPE_SCALE,
     DEVICE_TYPE_THERMOMETER,
     DOMAIN,
+    GLUCOSE_SERVICE_UUID,
     HEALTH_THERMOMETER_SERVICE_UUID,
+    PULSE_OXIMETER_SERVICE_UUID,
+    SCALE_SERVICE_UUID,
 )
 
 pytestmark = pytest.mark.usefixtures("mock_bluetooth")
@@ -56,6 +66,14 @@ def discovery(signature="service", *, connectable=True, address=ADDRESS):
         service_uuids = [HEALTH_THERMOMETER_SERVICE_UUID]
     elif signature == "thermometer_shared_id":
         manufacturer_data = {18498: b"\x01"}
+    elif signature in ("scale", "glucose", "pulse_oximeter"):
+        service_uuids = [
+            {
+                "scale": SCALE_SERVICE_UUID,
+                "glucose": GLUCOSE_SERVICE_UUID,
+                "pulse_oximeter": PULSE_OXIMETER_SERVICE_UUID,
+            }[signature]
+        ]
     adv = AdvertisementData(
         local_name=name,
         manufacturer_data=manufacturer_data,
@@ -103,9 +121,7 @@ async def open_manual(hass):
 @pytest.mark.parametrize(
     "address", ["aa:bb:cc:dd:ee:ff", "aa-bb-cc-dd-ee-ff", " aabbccddeeff "]
 )
-@pytest.mark.parametrize(
-    "device_type", [DEVICE_TYPE_BLOOD_PRESSURE, DEVICE_TYPE_THERMOMETER]
-)
+@pytest.mark.parametrize("device_type", list(DEVICE_NAMES))
 async def test_manual_setup_while_asleep(hass, address, device_type, mock_setup_entry):
     with patch(
         "homeassistant.components.bluetooth.async_ble_device_from_address",
@@ -120,12 +136,18 @@ async def test_manual_setup_while_asleep(hass, address, device_type, mock_setup_
                 CONF_DEVICE_TYPE: device_type,
             },
         )
+        if device_type == DEVICE_TYPE_SCALE:
+            assert result["step_id"] == "scale"
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {CONF_SCALE_EPOCH: "1970"}
+            )
         await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert result["title"] == "My Medisana"
     assert result["data"] == {
         CONF_ADDRESS: ADDRESS,
         CONF_DEVICE_TYPE: device_type,
+        **({CONF_SCALE_EPOCH: "1970"} if device_type == DEVICE_TYPE_SCALE else {}),
     }
     assert result["result"].unique_id == ADDRESS
     mock_setup_entry.assert_awaited_once()
@@ -148,6 +170,9 @@ async def test_manual_defaults_to_blood_pressure(hass):
     assert device_selector.config["options"] == [
         DEVICE_TYPE_BLOOD_PRESSURE,
         DEVICE_TYPE_THERMOMETER,
+        DEVICE_TYPE_SCALE,
+        DEVICE_TYPE_PULSE_OXIMETER,
+        DEVICE_TYPE_GLUCOSE,
     ]
 
 
@@ -204,6 +229,9 @@ async def test_duplicate_manual_device(hass, device_type):
         ("thermometer_name", DEVICE_TYPE_THERMOMETER),
         ("thermometer_service", DEVICE_TYPE_THERMOMETER),
         ("thermometer_shared_id", DEVICE_TYPE_THERMOMETER),
+        ("scale", DEVICE_TYPE_SCALE),
+        ("glucose", DEVICE_TYPE_GLUCOSE),
+        ("pulse_oximeter", DEVICE_TYPE_PULSE_OXIMETER),
     ],
 )
 async def test_automatic_discovery_from_real_manifest(hass, signature, device_type):
@@ -230,9 +258,18 @@ async def test_automatic_discovery_from_real_manifest(hass, signature, device_ty
         assert result["step_id"] == "bluetooth_confirm"
         assert result["description_placeholders"]["address"] == ADDRESS
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {})
+        if device_type == DEVICE_TYPE_SCALE:
+            assert result["step_id"] == "scale"
+            result = await hass.config_entries.flow.async_configure(
+                result["flow_id"], {CONF_SCALE_EPOCH: "2010"}
+            )
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert result["data"] == {CONF_ADDRESS: ADDRESS, CONF_DEVICE_TYPE: device_type}
+    assert result["data"] == {
+        CONF_ADDRESS: ADDRESS,
+        CONF_DEVICE_TYPE: device_type,
+        **({CONF_SCALE_EPOCH: "2010"} if device_type == DEVICE_TYPE_SCALE else {}),
+    }
     assert result["result"].unique_id == ADDRESS
 
 
@@ -361,13 +398,13 @@ async def test_blood_pressure_user_options(hass: HomeAssistant, user_id: int) ->
     assert MedisanaConfigFlow.async_supports_options_flow(entry)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
-    assert result["data_schema"]({}) == {CONF_USER_ID: -1}
+    assert result["data_schema"]({}) == {CONF_USER_ID: -1, CONF_SYNC_TIME: False}
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_USER_ID: user_id}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_USER_ID: user_id}
+    assert entry.options == {CONF_USER_ID: user_id, CONF_SYNC_TIME: False}
     assert isinstance(entry.options[CONF_USER_ID], int)
 
 
@@ -393,3 +430,44 @@ async def test_thermometer_has_no_user_options(hass: HomeAssistant) -> None:
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "no_options_available"
     assert entry.options == {}
+
+
+async def test_scale_user_and_clock_options(hass):
+    entry = _entry(DEVICE_TYPE_SCALE)
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["data_schema"]({}) == {
+        CONF_USER_ID: -1,
+        CONF_SCALE_EPOCH: "2010",
+        CONF_CONNECTION_DELAY: 12,
+    }
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_USER_ID: 2, CONF_SCALE_EPOCH: "1970"}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {
+        CONF_USER_ID: 2,
+        CONF_SCALE_EPOCH: "1970",
+        CONF_CONNECTION_DELAY: 12,
+    }
+
+
+async def test_blood_pressure_clock_option_is_saved(hass):
+    entry = _entry()
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {CONF_USER_ID: -1, CONF_SYNC_TIME: True}
+    )
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options[CONF_SYNC_TIME] is True
+
+
+async def test_yolanda_wifi_endpoint_is_not_a_classic_scale(hass):
+    info = discovery("scale")
+    info.name = "0000001234"
+    assert get_device_type(info) is None
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=info
+    )
+    assert result["reason"] == "not_supported"

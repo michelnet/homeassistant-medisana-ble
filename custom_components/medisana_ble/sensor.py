@@ -13,15 +13,31 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EntityCategory, UnitOfPressure, UnitOfTemperature
+from homeassistant.const import (
+    EntityCategory,
+    UnitOfMass,
+    UnitOfPressure,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DEVICE_TYPE_THERMOMETER, DOMAIN
+from .const import (
+    DEVICE_TYPE_BLOOD_PRESSURE,
+    DEVICE_TYPE_GLUCOSE,
+    DEVICE_TYPE_PULSE_OXIMETER,
+    DEVICE_TYPE_SCALE,
+    DEVICE_TYPE_THERMOMETER,
+    DOMAIN,
+    USER_FILTER_DEVICE_TYPES,
+)
 from .coordinator import MedisanaCoordinator
+from .glucose import GlucoseMeasurement
 from .parser import BloodPressureMeasurement
+from .pulse_oximeter import PulseOximeterMeasurement
+from .scale import ScaleMeasurement
 from .thermometer import TemperatureMeasurement
 
 PARALLEL_UPDATES = 0
@@ -85,6 +101,91 @@ THERMOMETER_SENSORS = (
         icon="mdi:thermometer",
     ),
 )
+SCALE_SENSORS = (
+    SensorEntityDescription(
+        key="weight",
+        translation_key="weight",
+        icon="mdi:scale-bathroom",
+        device_class=SensorDeviceClass.WEIGHT,
+        native_unit_of_measurement=UnitOfMass.KILOGRAMS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+    ),
+    *(
+        SensorEntityDescription(
+            key=key,
+            translation_key=key,
+            icon="mdi:human",
+            native_unit_of_measurement="%",
+            state_class=SensorStateClass.MEASUREMENT,
+            suggested_display_precision=1,
+        )
+        for key in ("body_fat", "body_water", "muscle")
+    ),
+    SensorEntityDescription(
+        key="bone_mass",
+        translation_key="bone_mass",
+        icon="mdi:bone",
+        device_class=SensorDeviceClass.WEIGHT,
+        native_unit_of_measurement=UnitOfMass.KILOGRAMS,
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="bmi",
+        translation_key="bmi",
+        icon="mdi:human",
+        native_unit_of_measurement="kg/m²",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    SensorEntityDescription(
+        key="basal_metabolism",
+        translation_key="basal_metabolism",
+        icon="mdi:fire",
+        native_unit_of_measurement="kcal/day",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=0,
+    ),
+    BLOOD_PRESSURE_SENSORS[-1],
+)
+PULSE_OXIMETER_SENSORS = (
+    SensorEntityDescription(
+        key="oxygen_saturation",
+        translation_key="oxygen_saturation",
+        icon="mdi:water-percent",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+    BLOOD_PRESSURE_SENSORS[3],
+    SensorEntityDescription(
+        key="pulse_amplitude_index",
+        translation_key="pulse_amplitude_index",
+        icon="mdi:pulse",
+        native_unit_of_measurement="%",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+)
+GLUCOSE_SENSORS = (
+    SensorEntityDescription(
+        key="glucose",
+        translation_key="glucose",
+        icon="mdi:diabetes",
+        device_class=SensorDeviceClass.BLOOD_GLUCOSE_CONCENTRATION,
+        native_unit_of_measurement="mg/dL",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+    ),
+)
+DEVICE_SENSORS = {
+    DEVICE_TYPE_BLOOD_PRESSURE: BLOOD_PRESSURE_SENSORS,
+    DEVICE_TYPE_THERMOMETER: THERMOMETER_SENSORS,
+    DEVICE_TYPE_SCALE: SCALE_SENSORS,
+    DEVICE_TYPE_PULSE_OXIMETER: PULSE_OXIMETER_SENSORS,
+    DEVICE_TYPE_GLUCOSE: GLUCOSE_SENSORS,
+}
 COMMON_SENSORS = (
     SensorEntityDescription(
         key="battery_level",
@@ -116,6 +217,12 @@ _RESTORED_ATTRIBUTES = (
     "measurement_time",
     "measurement_status",
     "temperature_type",
+    "sequence_number",
+    "sensor_status",
+    "type_sample_location",
+    "meal",
+    "device_sensor_status",
+    "measurement_type",
     "manufacturer_name",
     "model_number",
     "firmware_revision",
@@ -131,11 +238,7 @@ async def async_setup_entry(
 ) -> None:
     """Create only the sensors supported by the configured device type."""
     coordinator: MedisanaCoordinator = entry.runtime_data
-    descriptions = (
-        THERMOMETER_SENSORS
-        if coordinator.device_type == DEVICE_TYPE_THERMOMETER
-        else BLOOD_PRESSURE_SENSORS
-    )
+    descriptions = DEVICE_SENSORS[coordinator.device_type]
     async_add_entities(
         MedisanaSensor(coordinator, description)
         for description in (*descriptions, *COMMON_SENSORS, *TIMESTAMP_SENSORS)
@@ -165,18 +268,22 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
         }
         self._last_measurement_sequence = coordinator.measurement_sequence
         self._attr_extra_state_attributes = (
-            {} if is_thermometer else {"configured_user_id": coordinator.user_id_filter}
+            {"configured_user_id": coordinator.user_id_filter}
+            if coordinator.device_type in USER_FILTER_DEVICE_TYPES
+            else {}
         )
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.address)},
             connections={(CONNECTION_BLUETOOTH, coordinator.address)},
             name=coordinator.name,
             manufacturer="Medisana",
-            model=(
-                "TM 750 connect"
-                if is_thermometer
-                else "Bluetooth blood pressure monitor"
-            ),
+            model={
+                DEVICE_TYPE_THERMOMETER: "TM 750 connect",
+                DEVICE_TYPE_BLOOD_PRESSURE: "Bluetooth blood pressure monitor",
+                DEVICE_TYPE_SCALE: "Classic Bluetooth body analysis scale",
+                DEVICE_TYPE_PULSE_OXIMETER: "Bluetooth pulse oximeter",
+                DEVICE_TYPE_GLUCOSE: "Bluetooth glucose meter",
+            }[coordinator.device_type],
         )
 
     @property
@@ -193,7 +300,7 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
 
         last_state = await self.async_get_last_state()
         if last_state is None or (
-            self.coordinator.device_type != DEVICE_TYPE_THERMOMETER
+            self.coordinator.device_type in USER_FILTER_DEVICE_TYPES
             and last_state.attributes.get("configured_user_id")
             != self.coordinator.user_id_filter
         ):
@@ -260,6 +367,28 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
                 attributes["temperature_type"] = measurement.temperature_type
             if self.entity_description.device_class == SensorDeviceClass.TEMPERATURE:
                 self._attr_native_unit_of_measurement = measurement.unit
+        elif isinstance(measurement, ScaleMeasurement):
+            attributes["configured_user_id"] = self.coordinator.user_id_filter
+            attributes["user_id"] = measurement.user_id
+        elif isinstance(measurement, GlucoseMeasurement):
+            self._attr_native_unit_of_measurement = (
+                measurement.unit
+                if self.entity_description.key == "glucose"
+                else self.entity_description.native_unit_of_measurement
+            )
+            for name in (
+                "sequence_number",
+                "sensor_status",
+                "type_sample_location",
+                "meal",
+            ):
+                if (value := getattr(measurement, name)) is not None:
+                    attributes[name] = value
+        elif isinstance(measurement, PulseOximeterMeasurement):
+            attributes["measurement_type"] = measurement.measurement_type
+            for name in ("measurement_status", "device_sensor_status"):
+                if (value := getattr(measurement, name)) is not None:
+                    attributes[name] = value
         if timestamp is not None:
             attributes["measurement_time"] = timestamp.isoformat()
         if device_info:

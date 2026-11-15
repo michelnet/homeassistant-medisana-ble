@@ -1,4 +1,4 @@
-"""Discover and configure Medisana blood pressure monitors and thermometers."""
+"""Discover and configure supported Medisana BLE profiles."""
 
 from __future__ import annotations
 
@@ -20,19 +20,30 @@ from homeassistant.helpers import selector
 
 from .const import (
     BLOOD_PRESSURE_SERVICE_UUID,
+    CONF_CONNECTION_DELAY,
     CONF_DEVICE_TYPE,
+    CONF_SCALE_EPOCH,
+    CONF_SYNC_TIME,
     CONF_USER_ID,
-    DEFAULT_BLOOD_PRESSURE_NAME,
     DEFAULT_NAME,
-    DEFAULT_THERMOMETER_NAME,
+    DEFAULT_SCALE_CONNECTION_DELAY,
+    DEVICE_NAMES,
     DEVICE_TYPE_BLOOD_PRESSURE,
+    DEVICE_TYPE_GLUCOSE,
+    DEVICE_TYPE_PULSE_OXIMETER,
+    DEVICE_TYPE_SCALE,
     DEVICE_TYPE_THERMOMETER,
     DISCOVERY_LOCAL_NAMES,
     DISCOVERY_MANUFACTURER_IDS,
     DOMAIN,
+    GLUCOSE_SERVICE_UUID,
     HEALTH_THERMOMETER_SERVICE_UUID,
+    PULSE_OXIMETER_SERVICE_UUID,
+    SCALE_SERVICE_UUID,
     THERMOMETER_LOCAL_NAMES,
+    USER_FILTER_DEVICE_TYPES,
 )
+from .scale import SCALE_EPOCHS, default_scale_epoch
 
 _MAC_ADDRESS = re.compile(
     r"(?:[0-9a-f]{12}|(?:[0-9a-f]{2}:){5}[0-9a-f]{2}|"
@@ -63,6 +74,16 @@ def get_device_type(info: BluetoothServiceInfoBleak) -> str | None:
     if not info.connectable:
         return None
     service_uuids = {uuid.lower() for uuid in info.service_uuids}
+    if SCALE_SERVICE_UUID in service_uuids:
+        # The Yolanda WLAN setup endpoint shares the advertisement UUID, but
+        # does not transfer measurements through this classic scale protocol.
+        if (info.name or "").startswith("000000"):
+            return None
+        return DEVICE_TYPE_SCALE
+    if PULSE_OXIMETER_SERVICE_UUID in service_uuids:
+        return DEVICE_TYPE_PULSE_OXIMETER
+    if GLUCOSE_SERVICE_UUID in service_uuids:
+        return DEVICE_TYPE_GLUCOSE
     if (
         HEALTH_THERMOMETER_SERVICE_UUID in service_uuids
         or info.name in THERMOMETER_LOCAL_NAMES
@@ -84,11 +105,7 @@ def is_supported_discovery(info: BluetoothServiceInfoBleak) -> bool:
 
 def _discovery_name(info: BluetoothServiceInfoBleak) -> str:
     """Show a friendly name with an address suffix for multiple monitors."""
-    default_name = (
-        DEFAULT_THERMOMETER_NAME
-        if get_device_type(info) == DEVICE_TYPE_THERMOMETER
-        else DEFAULT_BLOOD_PRESSURE_NAME
-    )
+    default_name = DEVICE_NAMES[get_device_type(info)]
     name = info.name
     if not name or name == info.address or name in (DEFAULT_NAME, default_name):
         return f"{default_name} ({info.address[-5:]})"
@@ -114,10 +131,10 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
     @classmethod
     @callback
     def async_supports_options_flow(cls, config_entry: ConfigEntry) -> bool:
-        """Only blood pressure monitors have a user ID filter."""
+        """Scales and blood pressure monitors support user filtering."""
         return (
             config_entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_BLOOD_PRESSURE)
-            == DEVICE_TYPE_BLOOD_PRESSURE
+            in USER_FILTER_DEVICE_TYPES
         )
 
     async def async_step_bluetooth(
@@ -138,9 +155,11 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
     async def async_step_bluetooth_confirm(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Use Home Assistant's standard one-click discovery confirmation."""
+        """Confirm discovery, then choose the clock variant for a classic scale."""
         if user_input is not None:
             self._abort_if_unique_id_configured()
+            if self._device_type == DEVICE_TYPE_SCALE:
+                return await self.async_step_scale()
             return self.async_create_entry(
                 title=self._name,
                 data={
@@ -154,10 +173,37 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"name": self._name, "address": self._address},
         )
 
+    async def async_step_scale(self, user_input=None) -> ConfigFlowResult:
+        """Choose the scale clock variant before any RTC write is possible."""
+        if user_input is not None:
+            if user_input.get(CONF_SCALE_EPOCH) not in SCALE_EPOCHS:
+                return self.async_abort(reason="not_supported")
+            self._abort_if_unique_id_configured()
+            return self.async_create_entry(
+                title=self._name,
+                data={
+                    CONF_ADDRESS: self._address,
+                    CONF_DEVICE_TYPE: DEVICE_TYPE_SCALE,
+                    CONF_SCALE_EPOCH: user_input[CONF_SCALE_EPOCH],
+                },
+            )
+        return self.async_show_form(
+            step_id="scale",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(CONF_SCALE_EPOCH): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=list(SCALE_EPOCHS), translation_key=CONF_SCALE_EPOCH
+                        )
+                    ),
+                }
+            ),
+        )
+
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
-        """Find nearby monitors, with an address fallback if they are asleep."""
+        """Find nearby devices, with an address fallback if they are asleep."""
         return self.async_show_menu(
             step_id="user", menu_options=["discovered", "manual"]
         )
@@ -208,9 +254,19 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
             name = user_input[CONF_NAME].strip()
             if not name:
                 errors[CONF_NAME] = "invalid_name"
+            if (
+                user_input.get(CONF_DEVICE_TYPE, DEVICE_TYPE_BLOOD_PRESSURE)
+                not in DEVICE_NAMES
+            ):
+                errors[CONF_DEVICE_TYPE] = "invalid_device_type"
             if not errors:
                 await self.async_set_unique_id(address)
                 self._abort_if_unique_id_configured()
+                if user_input.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_SCALE:
+                    self._address = address
+                    self._name = name
+                    self._device_type = DEVICE_TYPE_SCALE
+                    return await self.async_step_scale()
                 return self.async_create_entry(
                     title=name,
                     data={
@@ -227,7 +283,7 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
                     CONF_DEVICE_TYPE, default=DEVICE_TYPE_BLOOD_PRESSURE
                 ): selector.SelectSelector(
                     selector.SelectSelectorConfig(
-                        options=[DEVICE_TYPE_BLOOD_PRESSURE, DEVICE_TYPE_THERMOMETER],
+                        options=list(DEVICE_NAMES),
                         translation_key=CONF_DEVICE_TYPE,
                     )
                 ),
@@ -242,7 +298,7 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MedisanaOptionsFlow(OptionsFlow):
-    """Filter blood pressure measurements by their transmitted user ID."""
+    """Filter user records and configure the classic scale clock variant."""
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
@@ -251,36 +307,109 @@ class MedisanaOptionsFlow(OptionsFlow):
         if not MedisanaConfigFlow.async_supports_options_flow(self.config_entry):
             return self.async_abort(reason="no_options_available")
         errors: dict[str, str] = {}
+        is_scale = self.config_entry.data.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_SCALE
         if user_input is not None:
             user_id = user_input[CONF_USER_ID]
+            max_user = 8 if is_scale else 254
             if (
                 isinstance(user_id, bool)
                 or not isinstance(user_id, (int, float))
-                or not -1 <= user_id <= 254
+                or not -1 <= user_id <= max_user
                 or int(user_id) != user_id
             ):
-                errors[CONF_USER_ID] = "invalid_user_id"
+                errors[CONF_USER_ID] = (
+                    "invalid_scale_user_id" if is_scale else "invalid_user_id"
+                )
             else:
+                if is_scale and user_input.get(CONF_SCALE_EPOCH) not in SCALE_EPOCHS:
+                    errors[CONF_SCALE_EPOCH] = "invalid_scale_epoch"
+                if is_scale:
+                    delay = user_input.get(
+                        CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
+                    )
+                    if (
+                        isinstance(delay, bool)
+                        or not isinstance(delay, (float, int))
+                        or not 0 <= delay <= 30
+                        or int(delay) != delay
+                    ):
+                        errors[CONF_CONNECTION_DELAY] = "invalid_connection_delay"
+                if errors:
+                    return self._show_options(user_input, errors, is_scale)
                 return self.async_create_entry(
-                    title="", data={CONF_USER_ID: int(user_id)}
+                    title="",
+                    data={
+                        CONF_USER_ID: int(user_id),
+                        **(
+                            {CONF_SCALE_EPOCH: user_input[CONF_SCALE_EPOCH]}
+                            if is_scale
+                            else {}
+                        ),
+                        **({CONF_CONNECTION_DELAY: int(delay)} if is_scale else {}),
+                        **(
+                            {CONF_SYNC_TIME: user_input.get(CONF_SYNC_TIME, False)}
+                            if not is_scale
+                            else {}
+                        ),
+                    },
                 )
 
+        return self._show_options(user_input, errors, is_scale)
+
+    def _show_options(self, user_input, errors, is_scale) -> ConfigFlowResult:
+        fields = {
+            vol.Required(
+                CONF_USER_ID,
+                default=self.config_entry.options.get(CONF_USER_ID, -1),
+            ): selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=-1,
+                    max=8 if is_scale else 254,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            )
+        }
+        if is_scale:
+            fields[
+                vol.Required(
+                    CONF_CONNECTION_DELAY,
+                    default=self.config_entry.options.get(
+                        CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
+                    ),
+                )
+            ] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=0, max=30, step=1, mode=selector.NumberSelectorMode.BOX
+                )
+            )
+            fields[
+                vol.Required(
+                    CONF_SCALE_EPOCH,
+                    default=self.config_entry.options.get(
+                        CONF_SCALE_EPOCH,
+                        self.config_entry.data.get(
+                            CONF_SCALE_EPOCH,
+                            default_scale_epoch(self.config_entry.title),
+                        ),
+                    ),
+                )
+            ] = selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=list(SCALE_EPOCHS), translation_key=CONF_SCALE_EPOCH
+                )
+            )
+        else:
+            fields[
+                vol.Required(
+                    CONF_SYNC_TIME,
+                    default=self.config_entry.options.get(CONF_SYNC_TIME, False),
+                )
+            ] = selector.BooleanSelector()
         return self.async_show_form(
             step_id="init",
-            data_schema=vol.Schema(
-                {
-                    vol.Required(
-                        CONF_USER_ID,
-                        default=self.config_entry.options.get(CONF_USER_ID, -1),
-                    ): selector.NumberSelector(
-                        selector.NumberSelectorConfig(
-                            min=-1,
-                            max=254,
-                            step=1,
-                            mode=selector.NumberSelectorMode.BOX,
-                        )
-                    )
-                }
+            data_schema=self.add_suggested_values_to_schema(
+                vol.Schema(fields), user_input
             ),
             errors=errors,
         )
