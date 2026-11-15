@@ -4,21 +4,27 @@ Detailed setup, protocol and troubleshooting notes. For installation and the
 compatibility table, see the [README](../README.md). Run development commands
 from the repository root.
 
-## Device variants
+## Model identifiers
 
-Medisana identifies the European **BW 360 connect** (article **51076**) as type
+Medisana identifies **BW 360 connect** (article **51076**) as type
 **AOJ-35C** in its [instruction manual](https://cloud.vitadock.com/doc/download/51076/default/manual/GB_DE_FR_NL_ES_IT_PT_GR_FI_SE_NO_DK_PL_CZ_SK_SI_HR_HU_RO_BG_EE_LV_LT_RU_AR_FA_UR_TR).
-The user confirmation in this repository concerns the US variant. The separate
-[BW 360 external report](https://github.com/bkbilly/medisanabp_ble/pull/12) documents
-real hardware in another integration's proposed branch; it is not a test of
-Medisana BLE. The US cordless monitor
-remains identified as `ARM-30H`; no equivalent European product name has been
-verified.
+The [community confirmation](https://community.home-assistant.io/t/medisana-ble-blood-pressure-and-temperature-in-home-assistant-local-and-cloud-free/1027847/2)
+identifies a Walmart-purchased wrist monitor by BLE name **AOJ-35C**. The matching
+identifier supports listing it with the BW 360 family; it does not establish
+identical firmware for every regional product. No separate US-specific BLE
+variant has been established. The [BW 360 external report](https://github.com/bkbilly/medisanabp_ble/pull/12)
+provides additional hardware evidence from another integration.
 
-Both US-variant blood pressure monitors were reported to work with the
-integration's existing automatic discovery. The report does not identify which advertisement field
-triggered discovery. Their Bluetooth names are **`AOJ-35C`** (wrist) and
-**`ARM-30H`** (arm), with reported addresses starting with **`A4:C1:38`**.
+The same community report confirms a Walmart-purchased cordless upper-arm
+monitor with BLE name **ARM-30H**. Its corresponding European sales-model name
+has not been verified, so it is listed by its known identifier without claiming
+a regional hardware difference. Purchase location alone does not identify a
+different device variant.
+
+Both reported devices worked with automatic discovery and an ESP32 Bluetooth
+proxy. The report does not identify which advertisement field triggered
+discovery. Their Bluetooth names are **`AOJ-35C`** (wrist) and **`ARM-30H`** (arm),
+with reported addresses starting with **`A4:C1:38`**.
 If manual setup is needed, enter the device's **full six-byte MAC address** from
 a BLE scan and select **Blood pressure monitor**; the prefix alone is not a
 complete address. The MAC prefix is only a hint for locating the device in a scan;
