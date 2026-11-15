@@ -1,0 +1,18 @@
+export_history:
+  name: Export measurement history
+  description: Return retained local measurements as CSV. Administrator access is required. Save the csv response as a UTF-8 .csv file. No public download file is created.
+  fields:
+    entry_id:
+      name: Device
+      required: true
+      selector:
+        config_entry:
+          integration: medisana_ble
+    user_id:
+      name: Bluetooth user ID
+      description: Optional filter. Omit it to export all users, including unassigned guest measurements.
+      selector:
+        number:
+          min: 0
+          max: 254
+          mode: box

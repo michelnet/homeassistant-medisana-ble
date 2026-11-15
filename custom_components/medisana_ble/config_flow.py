@@ -20,11 +20,18 @@ from homeassistant.helpers import selector
 
 from .const import (
     BLOOD_PRESSURE_SERVICE_UUID,
+    CONF_CLOCK_BEFORE_SUBSCRIBE,
+    CONF_CONNECTION_ATTEMPTS,
     CONF_CONNECTION_DELAY,
+    CONF_CONNECTION_TIMEOUT,
     CONF_DEVICE_TYPE,
+    CONF_HISTORY_LIMIT,
+    CONF_PAIR,
     CONF_SCALE_EPOCH,
+    CONF_SEPARATE_USERS,
     CONF_SYNC_TIME,
     CONF_USER_ID,
+    DEFAULT_HISTORY_LIMIT,
     DEFAULT_NAME,
     DEFAULT_SCALE_CONNECTION_DELAY,
     DEVICE_NAMES,
@@ -38,6 +45,7 @@ from .const import (
     DOMAIN,
     GLUCOSE_SERVICE_UUID,
     HEALTH_THERMOMETER_SERVICE_UUID,
+    LEGACY_OXIMETER_SERVICE_PREFIX,
     PULSE_OXIMETER_SERVICE_UUID,
     SCALE_SERVICE_UUID,
     THERMOMETER_LOCAL_NAMES,
@@ -80,7 +88,12 @@ def get_device_type(info: BluetoothServiceInfoBleak) -> str | None:
         if (info.name or "").startswith("000000"):
             return None
         return DEVICE_TYPE_SCALE
-    if PULSE_OXIMETER_SERVICE_UUID in service_uuids:
+    if PULSE_OXIMETER_SERVICE_UUID in service_uuids or (
+        "sugar" not in (info.name or "").casefold()
+        and any(
+            uuid.startswith(LEGACY_OXIMETER_SERVICE_PREFIX) for uuid in service_uuids
+        )
+    ):
         return DEVICE_TYPE_PULSE_OXIMETER
     if GLUCOSE_SERVICE_UUID in service_uuids:
         return DEVICE_TYPE_GLUCOSE
@@ -131,11 +144,8 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
     @classmethod
     @callback
     def async_supports_options_flow(cls, config_entry: ConfigEntry) -> bool:
-        """Scales and blood pressure monitors support user filtering."""
-        return (
-            config_entry.data.get(CONF_DEVICE_TYPE, DEVICE_TYPE_BLOOD_PRESSURE)
-            in USER_FILTER_DEVICE_TYPES
-        )
+        """Every profile offers local retention and connection settings."""
+        return True
 
     async def async_step_bluetooth(
         self, discovery_info: BluetoothServiceInfoBleak
@@ -298,70 +308,86 @@ class MedisanaConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class MedisanaOptionsFlow(OptionsFlow):
-    """Filter user records and configure the classic scale clock variant."""
+    """Configure local retention, connection timing and optional user groups."""
 
-    async def async_step_init(
-        self, user_input: dict[str, Any] | None = None
-    ) -> ConfigFlowResult:
-        """Configure a specific user ID, or -1 for all users."""
-        if not MedisanaConfigFlow.async_supports_options_flow(self.config_entry):
-            return self.async_abort(reason="no_options_available")
-        errors: dict[str, str] = {}
-        is_scale = self.config_entry.data.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_SCALE
+    def _settings(self) -> dict[str, tuple[int, int, int]]:
+        settings = {
+            CONF_CONNECTION_TIMEOUT: (3, 60, 20),
+            CONF_CONNECTION_ATTEMPTS: (1, 10, 2),
+            CONF_HISTORY_LIMIT: (0, 1000, DEFAULT_HISTORY_LIMIT),
+        }
+        if self.config_entry.data.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_SCALE:
+            settings[CONF_CONNECTION_DELAY] = (0, 30, DEFAULT_SCALE_CONNECTION_DELAY)
+        return settings
+
+    async def async_step_init(self, user_input=None) -> ConfigFlowResult:
+        """Validate integral limits before saving any new settings."""
+        device_type = self.config_entry.data.get(
+            CONF_DEVICE_TYPE, DEVICE_TYPE_BLOOD_PRESSURE
+        )
+        is_scale = device_type == DEVICE_TYPE_SCALE
+        has_users = device_type in USER_FILTER_DEVICE_TYPES
+        errors = {}
+        values = {}
         if user_input is not None:
-            user_id = user_input[CONF_USER_ID]
-            max_user = 8 if is_scale else 254
-            if (
-                isinstance(user_id, bool)
-                or not isinstance(user_id, (int, float))
-                or not -1 <= user_id <= max_user
-                or int(user_id) != user_id
-            ):
-                errors[CONF_USER_ID] = (
-                    "invalid_scale_user_id" if is_scale else "invalid_user_id"
-                )
-            else:
-                if is_scale and user_input.get(CONF_SCALE_EPOCH) not in SCALE_EPOCHS:
-                    errors[CONF_SCALE_EPOCH] = "invalid_scale_epoch"
-                if is_scale:
-                    delay = user_input.get(
-                        CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
+            settings = self._settings()
+            if has_users:
+                settings[CONF_USER_ID] = (-1, 8 if is_scale else 254, -1)
+            for key, (minimum, maximum, default) in settings.items():
+                value = user_input.get(key, self.config_entry.options.get(key, default))
+                if (
+                    isinstance(value, bool)
+                    or not isinstance(value, (int, float))
+                    or not minimum <= value <= maximum
+                    or int(value) != value
+                ):
+                    errors[key] = (
+                        "invalid_scale_user_id"
+                        if is_scale and key == CONF_USER_ID
+                        else f"invalid_{key}"
                     )
-                    if (
-                        isinstance(delay, bool)
-                        or not isinstance(delay, (float, int))
-                        or not 0 <= delay <= 30
-                        or int(delay) != delay
-                    ):
-                        errors[CONF_CONNECTION_DELAY] = "invalid_connection_delay"
-                if errors:
-                    return self._show_options(user_input, errors, is_scale)
-                return self.async_create_entry(
-                    title="",
-                    data={
-                        CONF_USER_ID: int(user_id),
-                        **(
-                            {CONF_SCALE_EPOCH: user_input[CONF_SCALE_EPOCH]}
-                            if is_scale
-                            else {}
-                        ),
-                        **({CONF_CONNECTION_DELAY: int(delay)} if is_scale else {}),
-                        **(
-                            {CONF_SYNC_TIME: user_input.get(CONF_SYNC_TIME, False)}
-                            if not is_scale
-                            else {}
-                        ),
-                    },
+                else:
+                    values[key] = int(value)
+            if has_users:
+                values[CONF_SEPARATE_USERS] = user_input.get(CONF_SEPARATE_USERS, False)
+            values[CONF_PAIR] = user_input.get(CONF_PAIR, False)
+            if is_scale:
+                epoch = user_input.get(CONF_SCALE_EPOCH)
+                if epoch not in SCALE_EPOCHS:
+                    errors[CONF_SCALE_EPOCH] = "invalid_scale_epoch"
+                else:
+                    values[CONF_SCALE_EPOCH] = epoch
+            elif device_type == DEVICE_TYPE_BLOOD_PRESSURE:
+                values[CONF_SYNC_TIME] = user_input.get(CONF_SYNC_TIME, False)
+                values[CONF_CLOCK_BEFORE_SUBSCRIBE] = user_input.get(
+                    CONF_CLOCK_BEFORE_SUBSCRIBE, False
                 )
-
-        return self._show_options(user_input, errors, is_scale)
-
-    def _show_options(self, user_input, errors, is_scale) -> ConfigFlowResult:
-        fields = {
+            if not errors:
+                return self.async_create_entry(title="", data=values)
+        fields = {}
+        for key, (minimum, maximum, default) in self._settings().items():
+            fields[
+                vol.Required(key, default=self.config_entry.options.get(key, default))
+            ] = selector.NumberSelector(
+                selector.NumberSelectorConfig(
+                    min=minimum,
+                    max=maximum,
+                    step=1,
+                    mode=selector.NumberSelectorMode.BOX,
+                )
+            )
+        fields[
             vol.Required(
-                CONF_USER_ID,
-                default=self.config_entry.options.get(CONF_USER_ID, -1),
-            ): selector.NumberSelector(
+                CONF_PAIR, default=self.config_entry.options.get(CONF_PAIR, False)
+            )
+        ] = selector.BooleanSelector()
+        if has_users:
+            fields[
+                vol.Required(
+                    CONF_USER_ID,
+                    default=self.config_entry.options.get(CONF_USER_ID, -1),
+                )
+            ] = selector.NumberSelector(
                 selector.NumberSelectorConfig(
                     min=-1,
                     max=8 if is_scale else 254,
@@ -369,20 +395,13 @@ class MedisanaOptionsFlow(OptionsFlow):
                     mode=selector.NumberSelectorMode.BOX,
                 )
             )
-        }
-        if is_scale:
             fields[
                 vol.Required(
-                    CONF_CONNECTION_DELAY,
-                    default=self.config_entry.options.get(
-                        CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
-                    ),
+                    CONF_SEPARATE_USERS,
+                    default=self.config_entry.options.get(CONF_SEPARATE_USERS, False),
                 )
-            ] = selector.NumberSelector(
-                selector.NumberSelectorConfig(
-                    min=0, max=30, step=1, mode=selector.NumberSelectorMode.BOX
-                )
-            )
+            ] = selector.BooleanSelector()
+        if is_scale:
             fields[
                 vol.Required(
                     CONF_SCALE_EPOCH,
@@ -399,13 +418,11 @@ class MedisanaOptionsFlow(OptionsFlow):
                     options=list(SCALE_EPOCHS), translation_key=CONF_SCALE_EPOCH
                 )
             )
-        else:
-            fields[
-                vol.Required(
-                    CONF_SYNC_TIME,
-                    default=self.config_entry.options.get(CONF_SYNC_TIME, False),
-                )
-            ] = selector.BooleanSelector()
+        elif device_type == DEVICE_TYPE_BLOOD_PRESSURE:
+            for key in (CONF_SYNC_TIME, CONF_CLOCK_BEFORE_SUBSCRIBE):
+                fields[
+                    vol.Required(key, default=self.config_entry.options.get(key, False))
+                ] = selector.BooleanSelector()
         return self.async_show_form(
             step_id="init",
             data_schema=self.add_suggested_values_to_schema(

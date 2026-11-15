@@ -55,13 +55,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "User filter and scale clock",
-        "description": "Use -1 for all users, or select one transmitted Bluetooth user ID. It may differ from the number on the device. Classic scales use a clock origin of 2010 for BS 410/444 and 1970 for BS 430/440; choose the origin matching your scale model. Changing the user filter clears displayed values until a matching measurement arrives. The connection delay lets the scale finish computing composition; default: 12 seconds. For blood pressure monitors, optionally synchronize the device clock with Home Assistant when supported by the device.",
+        "title": "Connection, users and history",
+        "description": "User IDs are raw Bluetooth IDs and may differ from the device display. -1 shows all users. Separate user sensors add groups for known IDs (scales: 1–8); guests remain unassigned. History: 0 disables retention and removes existing history; otherwise up to 1000 records are stored locally (default 200). BS A45: try a 3-second connection timeout and 10 attempts if needed. BU 572: optionally enable pairing, time synchronization and clock before notifications. Pairing requires adapter support. Select the appropriate scale clock origin (BS 410/444: 2010; BS 430/440: 1970; variants exist). The connection delay lets composition finish (default 12 seconds).",
         "data": {
           "user_id": "Bluetooth user ID (-1 = all users)",
           "scale_epoch": "Scale clock origin",
           "connection_delay": "Delay before connecting (seconds)",
-          "sync_time": "Synchronize device clock"
+          "sync_time": "Synchronize device clock",
+          "connection_timeout": "Connection timeout (seconds)",
+          "connection_attempts": "Maximum connection attempts",
+          "pair": "Request Bluetooth pairing",
+          "clock_before_subscribe": "Set clock before measurement notifications",
+          "separate_user_sensors": "Separate sensors for each user",
+          "history_limit": "Maximum local history records (0 = off)"
         }
       }
     },
@@ -69,7 +75,10 @@
       "invalid_user_id": "Enter a whole number from -1 to 254.",
       "invalid_scale_epoch": "Choose 1970 or 2010 to match your scale model.",
       "invalid_scale_user_id": "Enter a whole number from -1 to 8.",
-      "invalid_connection_delay": "Enter a whole number from 0 to 30."
+      "invalid_connection_delay": "Enter a whole number from 0 to 30.",
+      "invalid_connection_timeout": "Enter a whole number from 3 to 60.",
+      "invalid_connection_attempts": "Enter a whole number from 1 to 10.",
+      "invalid_history_limit": "Enter a whole number from 0 to 1000."
     },
     "abort": {
       "no_options_available": "This device has no configurable options."
@@ -150,6 +159,21 @@
       "options": {
         "1970": "1970 (BS 430 / BS 440)",
         "2010": "2010 (BS 410 / BS 444)"
+      }
+    }
+  },
+  "services": {
+    "export_history": {
+      "name": "Export measurement history",
+      "description": "Return retained local measurements as CSV. Requires administrator access. Save the csv response as a UTF-8 .csv file.",
+      "fields": {
+        "entry_id": {
+          "name": "Device"
+        },
+        "user_id": {
+          "name": "Bluetooth user ID",
+          "description": "Optional. Omit to export all users, including guests."
+        }
       }
     }
   }

@@ -67,7 +67,8 @@ The original profiles have completed successful Home Assistant hardware tests:
 
 These results validate the listed models. They do not establish compatibility
 with other Medisana devices. The new classic scale, pulse-oximeter and glucose
-profiles in 1.1.0 currently have simulated validation only; no new physical-device
+profiles introduced in 1.1.0 and the additions prepared for 1.2.0 have simulated
+validation only; no new physical-device
 validation is implied. Additional user reports are listed in the README.
 The following checklist can be used to repeat the
 physical tests on another Home Assistant installation:
@@ -116,7 +117,13 @@ For a **standard PM 100 connect / PLX oximeter**, verify service 1822 and either
 pulse amplitude index when available. Check the `measurement_type`,
 `measurement_status` and `device_sensor_status` attributes. Device-marked invalid,
 unavailable, demonstration/testing readings must not become normal numeric values.
-The legacy CDxx proprietary oximeter path is not supported.
+For an **older PM 150 connect**, use nearby-device search or manual setup and
+select Pulse oximeter. Confirm its variable `ba11f08c-5f14-0b0d-…` service exposes
+CD01/CD02/CD03/CD04 notifications and writable CD20. All subscriptions must finish
+before the seven-byte start command is sent. Compare saturation and pulse over
+several wakeups. Control acknowledgements must never create measurements. The
+experimental legacy path supplies no device timestamp or decoded quality flags.
+Its device-specific service UUID suffix must be redacted in diagnostics.
 
 For a **MediTouch 2 connect / dual protocol candidate**, verify service 1808 and
 measurement 2A18; check optional 2A34 context and 2A52 RACP. Model and firmware
@@ -145,7 +152,7 @@ therefore keeps external evidence separate from validation of this integration.
 - **BU 572 connect:** [jagula's integration](https://github.com/jagula/home-assistant-medisana-bu572#getestet)
   explicitly reports a tested device and verifies raw user IDs 0 and 1. Its
   coordinator requests pairing and writes Current Time; Medisana BLE has an
-  optional clock write but does not initiate pairing. Confirm authentication and
+  optional pairing and clock-before-notifications settings. Confirm authentication and
   time-write/subscription ordering on the actual device before marking it tested here.
 - **BU 546 / BU 575 connect:** [Rudertier's supported-device list](https://github.com/Rudertier/medisana_blood_pressure#readme)
   reports both models tested, and a [BU 575 user report](https://github.com/Rudertier/medisana_blood_pressure/issues/9)
@@ -173,12 +180,14 @@ therefore keeps external evidence separate from validation of this integration.
   timestamps against the device rather than relying on its model name alone.
 - **BS 550:** [issue 22](https://github.com/bwynants/weegschaal/issues/22)
   reports successful operation after setting up a recognized scale user. It also
-  documents unassigned user ID 255. Medisana BLE currently accepts only scale user
-  IDs 0–8; guest packets with 255 are rejected. This remains a conditional candidate.
+  documents unassigned user ID 255. The decoder now accepts it as an unassigned
+  weight and ignores its composition fields. Assigned scale IDs remain 0–8;
+  personal groups are created only for 1–8. Physical validation is still pending.
 - **BSA 45:** [issue 103](https://github.com/keptenkurk/BS440/issues/103)
   reports working operation using BS 444 settings, a three-second connection
-  timeout and more attempts. Medisana BLE does not implement that model-specific
-  timeout strategy, so the report is conditional evidence only.
+  timeout and more attempts. Configurable per-attempt timeout and retry count
+  now allow 3 seconds / 10 attempts. The scale's separate pre-connect delay still
+  applies. The report remains conditional until repeated hardware tests here.
 - **BSA 41 connect:** [openScale issue 851](https://github.com/oliexdev/openScale/issues/851)
   reports successful use through the BS 44x family handler. It does not include a
   packet capture establishing compatibility with this parser; keep the model a
@@ -186,23 +195,85 @@ therefore keeps external evidence separate from validation of this integration.
 - **PM 100 connect:** [frankhommers' tested-device list](https://github.com/frankhommers/ha-pulse-oximeter#tested-devices)
   identifies ChoiceMMed MD300C208S and the standard PLX profile. Its endpoints and
   SFLOAT field layout match the implemented profile. The report does not cover
-  legacy proprietary PM 100 variants.
+  the separate legacy PM 150 CDxx path.
 - **BUA 52 and MediTouch 2 connect dual:** this review found no concrete independent
   working report. The [Gluko-Smart source](https://github.com/KathrinKollegger/Gluko-Smart-App/blob/master/app/src/main/java/com/example/gluko_smart/GlobalVariable.java)
   names MediTouch 2 and the standard glucose endpoints; it does not establish a
   tested connect/dual variant or a complete successful measurement exchange.
 
-These evidence updates change documentation only; they add no external driver
-implementation to the integration.
+- **BU 550 and PM 150 connect:** the
+  [2019 AIIT paper](https://eprints.uklo.edu.mk/id/eprint/2338/1/AIIT2019_ProceedingsFinal_Optimizing%20Bluetooth%20Communication.pdf)
+  reports independent direct BLE measurements. The BU 550 standard endpoint is
+  already supported; PM 150 now has an experimental CDxx implementation.
+  [Protocol research](PROTOCOL_RESEARCH.md) records app cross-checks, source
+  handling and unresolved older tracker/Lefu families.
+
+No external GPL, noncommercial or unlicensed implementation was added. The
+classic scale adaptation retains its existing MIT provenance; the legacy decoder
+uses independently implemented protocol facts.
+
+## User groups, retention, events and diagnostics
+
+The focused tests are in `test_history_users_diagnostics.py` and
+`test_legacy_oximeter.py`; transport and packets are simulated.
+
+1. Enable separate user sensors on a blood-pressure device or scale. Send records
+   for two users in both date orders. The main group obeys its configured filter;
+   each user group keeps its own latest reading. Confirm raw ID 0 for supported
+   blood-pressure monitors without translating it to display user 1.
+2. For a BS 550 guest record (raw 255), confirm weight with unknown user ID and no
+   composition/BMI or personal child device. Verify that a subsequent assigned
+   record is not contaminated by the guest record.
+3. Restart/reload and verify per-user groups restore independently, also with
+   retention disabled or their last record outside the history limit.
+4. Set a small history limit. Replay older and newer records and confirm retention
+   keeps the newest device times. Download CSV as an administrator; original
+   measurement times, reception times, units and other-user records must remain
+   distinct. A non-administrator must receive an authorization error.
+5. Set retention to zero and confirm the previous integration history is removed;
+   Recorder remains independent. Removing the integration entry must also remove
+   its private record store. No public `/config/www` CSV file is created.
+6. Listen for `medisana_ble_measurement`. Repeated timestamped records already in
+   retained history should not fire again. Scale body/profile enrichment uses the
+   same record ID with `updated: true`. Thermometer indications remain separate
+   even with identical values, device times and reception times.
+7. Tune timeout/attempts and confirm actual connection attempts honor the timeout,
+   rather than merely passing it to a connector that overrides it. Pairing is
+   opt-in; unsupported adapters must produce an error category and allow cleanup.
+8. Download diagnostics before and after a connection. Check firmware, GATT
+   endpoints and connection counters. Confirm no raw measurements, MAC, serial
+   number or device-specific legacy service suffix is present.
 
 ## Reporting a result
 
-Record the device model, Home Assistant version and Bluetooth adapter, whether
-discovery succeeded, and whether readings never arrived or stopped updating after
-the first transfer.
+Open a [device confirmation issue](https://github.com/michelnet/homeassistant-medisana-ble/issues/new?title=Device%20confirmation%3A%20MODEL)
+after checking a physical device with this integration. Replace `MODEL` in the
+title with its exact model name and copy this template into the issue:
 
-For a newly tested profile, also record the firmware version, advertised name,
-service/characteristic UUIDs, selected scale clock format and connection delay.
+```text
+Device model / article number / country variant:
+Device firmware (if available):
+Home Assistant version:
+Medisana BLE version:
+Bluetooth adapter model or proxy model/firmware:
+Setup: automatic discovery / nearby-device search / manual address
+Settings changed: user filter, separate users, scale clock/delay, timeout, pairing, clock sync
+Values and units match device display: yes / partly / no
+Device timestamp: correct / incorrect / not supplied / not tested
+New readings transfer after sleep on repeated attempts: yes / no / not tested
+Values restore and new transfers work after HA restart: yes / no / not tested
+Other features checked: users, composition, battery, history, CSV, events
+Failures, limitations or workarounds:
+```
+
+Record only the functions actually checked. A successful discovery or connection
+does not confirm measurement transfer, and one working sensor does not confirm
+every optional feature. An unsuccessful or partial test is useful too: describe
+whether values never arrived or stopped updating after the first transfer.
+
+For a newly tested profile, include service/characteristic UUIDs if available
+from diagnostics, with device identifiers removed. Review any attachment before
+posting; personal health values, MAC addresses and serial numbers are not needed.
 Models with Lefu BLE or other BLE packet layouts should remain unconfirmed until
 their direct measurement format has been established. A device with BLE used
 only for WLAN setup must be excluded rather than added as a future measurement

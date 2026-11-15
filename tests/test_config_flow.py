@@ -390,6 +390,16 @@ async def test_no_devices_shows_actionable_message(hass):
     assert result["reason"] == "no_devices_found"
 
 
+CONNECTION_DEFAULTS = {
+    "connection_timeout": 20,
+    "connection_attempts": 2,
+    "history_limit": 200,
+    "pair": False,
+}
+USER_DEFAULTS = {**CONNECTION_DEFAULTS, "separate_user_sensors": False}
+BP_DEFAULTS = {**USER_DEFAULTS, CONF_SYNC_TIME: False, "clock_before_subscribe": False}
+
+
 @pytest.mark.parametrize("user_id", [-1, 0, 2, 254])
 async def test_blood_pressure_user_options(hass: HomeAssistant, user_id: int) -> None:
     """User zero remains a valid filter, while -1 means all users."""
@@ -398,13 +408,13 @@ async def test_blood_pressure_user_options(hass: HomeAssistant, user_id: int) ->
     assert MedisanaConfigFlow.async_supports_options_flow(entry)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["type"] is FlowResultType.FORM
-    assert result["data_schema"]({}) == {CONF_USER_ID: -1, CONF_SYNC_TIME: False}
+    assert result["data_schema"]({}) == {**BP_DEFAULTS, CONF_USER_ID: -1}
 
     result = await hass.config_entries.options.async_configure(
         result["flow_id"], user_input={CONF_USER_ID: user_id}
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {CONF_USER_ID: user_id, CONF_SYNC_TIME: False}
+    assert entry.options == {**BP_DEFAULTS, CONF_USER_ID: user_id}
     assert isinstance(entry.options[CONF_USER_ID], int)
 
 
@@ -421,15 +431,17 @@ async def test_reject_fractional_user_id(hass: HomeAssistant) -> None:
     assert entry.options == {}
 
 
-async def test_thermometer_has_no_user_options(hass: HomeAssistant) -> None:
-    """Hide blood pressure options and reject direct thermometer options flows."""
+async def test_thermometer_has_only_general_options(hass: HomeAssistant) -> None:
+    """Thermometers expose retention/connection settings without user filters."""
     entry = _entry(DEVICE_TYPE_THERMOMETER)
     entry.add_to_hass(hass)
-    assert not MedisanaConfigFlow.async_supports_options_flow(entry)
+    assert MedisanaConfigFlow.async_supports_options_flow(entry)
     result = await hass.config_entries.options.async_init(entry.entry_id)
-    assert result["type"] is FlowResultType.ABORT
-    assert result["reason"] == "no_options_available"
-    assert entry.options == {}
+    assert result["type"] is FlowResultType.FORM
+    assert result["data_schema"]({}) == CONNECTION_DEFAULTS
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == CONNECTION_DEFAULTS
 
 
 async def test_scale_user_and_clock_options(hass):
@@ -437,6 +449,7 @@ async def test_scale_user_and_clock_options(hass):
     entry.add_to_hass(hass)
     result = await hass.config_entries.options.async_init(entry.entry_id)
     assert result["data_schema"]({}) == {
+        **USER_DEFAULTS,
         CONF_USER_ID: -1,
         CONF_SCALE_EPOCH: "2010",
         CONF_CONNECTION_DELAY: 12,
@@ -446,6 +459,7 @@ async def test_scale_user_and_clock_options(hass):
     )
     assert result["type"] is FlowResultType.CREATE_ENTRY
     assert entry.options == {
+        **USER_DEFAULTS,
         CONF_USER_ID: 2,
         CONF_SCALE_EPOCH: "1970",
         CONF_CONNECTION_DELAY: 12,
@@ -471,3 +485,31 @@ async def test_yolanda_wifi_endpoint_is_not_a_classic_scale(hass):
         DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=info
     )
     assert result["reason"] == "not_supported"
+
+
+@pytest.mark.parametrize(
+    "key,value",
+    [
+        ("connection_timeout", 2),
+        ("connection_timeout", 61),
+        ("connection_attempts", 0),
+        ("connection_attempts", 11),
+        ("history_limit", -1),
+        ("history_limit", 1001),
+        ("history_limit", 0.5),
+    ],
+)
+async def test_reject_invalid_connection_and_retention_limits(hass, key, value):
+    entry = _entry()
+    entry.add_to_hass(hass)
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    # A submitted form is schema-validated by HA; exercise the integration's
+    # validation directly for selector values outside the allowed range.
+    from custom_components.medisana_ble.config_flow import MedisanaOptionsFlow
+
+    flow = MedisanaOptionsFlow()
+    flow.hass = hass
+    flow.handler = entry.entry_id
+    result = await flow.async_step_init({CONF_USER_ID: -1, key: value})
+    assert result["type"] is FlowResultType.FORM
+    assert result["errors"] == {key: f"invalid_{key}"}

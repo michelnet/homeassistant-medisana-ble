@@ -7,6 +7,7 @@ import inspect
 import logging
 from collections.abc import Mapping
 from contextlib import suppress
+from dataclasses import fields, replace
 from datetime import datetime, timedelta
 from struct import pack
 from time import monotonic
@@ -28,12 +29,19 @@ from homeassistant.util import dt as dt_util
 from .const import (
     BATTERY_LEVEL_CHARACTERISTIC_UUID,
     BLOOD_PRESSURE_CHARACTERISTIC_UUID,
+    CONF_CLOCK_BEFORE_SUBSCRIBE,
+    CONF_CONNECTION_ATTEMPTS,
     CONF_CONNECTION_DELAY,
+    CONF_CONNECTION_TIMEOUT,
     CONF_DEVICE_TYPE,
+    CONF_HISTORY_LIMIT,
+    CONF_PAIR,
     CONF_SCALE_EPOCH,
+    CONF_SEPARATE_USERS,
     CONF_SYNC_TIME,
     CONF_USER_ID,
     CURRENT_TIME_UUID,
+    DEFAULT_HISTORY_LIMIT,
     DEFAULT_NAME,
     DEFAULT_SCALE_CONNECTION_DELAY,
     DEVICE_INFORMATION_CHARACTERISTIC_UUIDS,
@@ -43,8 +51,14 @@ from .const import (
     DEVICE_TYPE_SCALE,
     DEVICE_TYPE_THERMOMETER,
     DOMAIN,
+    EVENT_MEASUREMENT,
     GLUCOSE_CONTEXT_UUID,
     GLUCOSE_MEASUREMENT_UUID,
+    LEGACY_OXIMETER_CONTROL_UUIDS,
+    LEGACY_OXIMETER_MEASUREMENT_UUID,
+    LEGACY_OXIMETER_SERVICE_PREFIX,
+    LEGACY_OXIMETER_START,
+    LEGACY_OXIMETER_WRITE_UUID,
     PLX_CONTINUOUS_UUID,
     PLX_SPOT_CHECK_UUID,
     RECORD_ACCESS_CONTROL_UUID,
@@ -58,8 +72,9 @@ from .const import (
     USER_FILTER_DEVICE_TYPES,
 )
 from .glucose import GlucoseDecoder, GlucoseMeasurement
+from .history import MeasurementHistory
 from .parser import BloodPressureMeasurement, parse_blood_pressure
-from .pulse_oximeter import PulseOximeterMeasurement, parse_plx
+from .pulse_oximeter import PulseOximeterMeasurement, parse_legacy_oximeter, parse_plx
 from .scale import (
     ScaleDecoder,
     ScaleMeasurement,
@@ -79,6 +94,30 @@ type MedisanaMeasurement = (
     | GlucoseMeasurement
     | PulseOximeterMeasurement
 )
+
+
+class MedisanaBleakClient(BleakClientWithServiceCache):
+    """Enforce the requested timeout for each retry on all BLE backends."""
+
+    def __init__(self, *args, timeout: float = 20, **kwargs) -> None:
+        super().__init__(*args, timeout=timeout, **kwargs)
+        self._connection_timeout = timeout
+
+    async def connect(self, **kwargs) -> None:
+        # The retry connector passes its own fixed 20-second timeout to connect.
+        # Override it and bound the entire attempt, including service discovery.
+        kwargs["timeout"] = self._connection_timeout
+        try:
+            async with asyncio.timeout(self._connection_timeout):
+                await super().connect(**kwargs)
+        except BaseException:
+            # The connector cannot hand the client back if pairing raises an
+            # unsupported-backend error. Also clean up timed-out/cancelled
+            # attempts here before the connector starts another attempt.
+            with suppress(BleakError, OSError, TimeoutError, asyncio.CancelledError):
+                async with asyncio.timeout(5):
+                    await self.disconnect()
+            raise
 
 
 class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
@@ -101,6 +140,33 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             CONF_CONNECTION_DELAY, DEFAULT_SCALE_CONNECTION_DELAY
         )
         self._glucose_decoder = GlucoseDecoder()
+        self.connection_timeout = entry.options.get(CONF_CONNECTION_TIMEOUT, 20)
+        self.connection_attempts = entry.options.get(CONF_CONNECTION_ATTEMPTS, 2)
+        self.pair = entry.options.get(CONF_PAIR, False)
+        self.clock_before_subscribe = entry.options.get(
+            CONF_CLOCK_BEFORE_SUBSCRIBE, False
+        )
+        self.separate_users = (
+            self.device_type in USER_FILTER_DEVICE_TYPES
+            and entry.options.get(CONF_SEPARATE_USERS, False)
+        )
+        self.history = MeasurementHistory(
+            hass,
+            entry.entry_id,
+            entry.options.get(CONF_HISTORY_LIMIT, DEFAULT_HISTORY_LIMIT),
+        )
+        self.user_measurements: dict[int, MedisanaMeasurement] = {}
+        self.user_received_at: dict[int, datetime] = {}
+        self._restored_user_values: dict[int, dict] = {}
+        self.connection_diagnostics = {
+            "sessions": 0,
+            "connections": 0,
+            "failures": 0,
+            "malformed_packets": 0,
+            "last_error": None,
+        }
+        self.gatt_endpoints: list[dict] = []
+        self.oximeter_protocol: str | None = None
         self.received_at: datetime | None = None
         self.measurement_sequence = 0
         self.latest_timestamp: datetime | None = None
@@ -114,6 +180,105 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
         self._unsubscribers: list[CALLBACK_TYPE] = []
         self._stopped = False
         self._next_attempt = 0.0
+
+    async def async_initialize(self) -> None:
+        """Restore per-user readings from the private bounded record store."""
+        await self.history.async_load()
+        if self.device_type not in USER_FILTER_DEVICE_TYPES:
+            return
+        cls = (
+            ScaleMeasurement
+            if self.device_type == DEVICE_TYPE_SCALE
+            else BloodPressureMeasurement
+        )
+        for record in self.history.records.values():
+            values = {
+                field.name: record[field.name]
+                for field in fields(cls)
+                if field.name in record
+            }
+            if values.get("timestamp"):
+                values["timestamp"] = datetime.fromisoformat(values["timestamp"])
+                if cls is BloodPressureMeasurement:
+                    values["timestamp"] = (
+                        values["timestamp"]
+                        .astimezone(ZoneInfo(self.hass.config.time_zone))
+                        .replace(tzinfo=None)
+                    )
+            measurement = cls(**values)
+            self._remember_user(
+                measurement, datetime.fromisoformat(record["received_at"])
+            )
+
+    @callback
+    def _remember_user(self, measurement, received_at: datetime) -> bool:
+        """Keep each known user independent of the main sensor's user filter."""
+        if not self.separate_users:
+            return False
+        user = getattr(measurement, "user_id", None)
+        if user is None or (self.device_type == DEVICE_TYPE_SCALE and user == 0):
+            return False
+        previous = self._previous_user_measurement(user)
+        if previous is not None:
+            if (
+                previous.timestamp is not None
+                and measurement.timestamp is not None
+                and measurement.timestamp < previous.timestamp
+            ):
+                return False
+            if measurement == previous and measurement.timestamp is not None:
+                return False
+        self.user_measurements[user] = measurement
+        self._restored_user_values.pop(user, None)
+        self.user_received_at[user] = received_at
+        return True
+
+    @callback
+    def restore_user_sensor_data(
+        self, user: int, key: str, value, unit, attributes
+    ) -> None:
+        """Seed replay protection from entity restore when history is disabled."""
+        cls = (
+            ScaleMeasurement
+            if self.device_type == DEVICE_TYPE_SCALE
+            else BloodPressureMeasurement
+        )
+        values = self._restored_user_values.setdefault(user, {})
+        if key in {field.name for field in fields(cls)}:
+            values[key] = value
+        if key in _BLOOD_PRESSURE_VALUE_KEYS and unit in ("mmHg", "kPa"):
+            values["pressure_unit"] = unit
+        for name in ("measurement_time", "measurement_status", "raw_user_id"):
+            if name in attributes:
+                values[name] = attributes[name]
+
+    def _previous_user_measurement(self, user: int | None):
+        if previous := self.user_measurements.get(user):
+            return previous
+        if user not in self._restored_user_values:
+            return None
+        restored = self._restored_user_values[user]
+        timestamp = restored.get("measurement_time")
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
+        if timestamp is None:
+            return None
+        if self.device_type == DEVICE_TYPE_BLOOD_PRESSURE:
+            timestamp = timestamp.astimezone(
+                ZoneInfo(self.hass.config.time_zone)
+            ).replace(tzinfo=None)
+            cls = BloodPressureMeasurement
+        else:
+            if restored.get("weight") is None:
+                return None
+            cls = ScaleMeasurement
+        values = {field.name: restored.get(field.name) for field in fields(cls)}
+        values.update(user_id=user, timestamp=timestamp)
+        if cls is BloodPressureMeasurement:
+            values["pressure_unit"] = restored.get("pressure_unit", "mmHg")
+        else:
+            values["raw_user_id"] = restored.get("raw_user_id", user)
+        return cls(**values)
 
     @callback
     def async_start(self) -> None:
@@ -177,6 +342,7 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             if client is self._client:
                 self.hass.loop.call_soon_threadsafe(disconnected.set)
 
+        self.connection_diagnostics["sessions"] += 1
         try:
             async with asyncio.timeout(SESSION_TIMEOUT):
                 if self.device_type == DEVICE_TYPE_SCALE:
@@ -189,23 +355,40 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
                 if device is None:
                     return
                 self._client = await establish_connection(
-                    BleakClientWithServiceCache,
+                    MedisanaBleakClient,
                     device,
                     self.name,
                     disconnected_callback=on_disconnect,
-                    max_attempts=2,
-                    timeout=20.0,
+                    max_attempts=self.connection_attempts,
+                    timeout=float(self.connection_timeout),
+                    **({"pair": True} if self.pair else {}),
                 )
                 if not self._client.is_connected:
                     return
+                self.connection_diagnostics["connections"] += 1
+                self.connection_diagnostics["last_error"] = None
+                self.gatt_endpoints = [
+                    {
+                        "service": service.uuid,
+                        "characteristic": characteristic.uuid,
+                        "properties": list(characteristic.properties),
+                    }
+                    for service in self._client.services
+                    for characteristic in service.characteristics
+                ]
                 self._scale_decoder = ScaleDecoder(self.scale_epoch)
                 self._glucose_decoder = GlucoseDecoder()
                 if not await self._async_subscribe():
+                    self.connection_diagnostics["last_error"] = (
+                        "unsupported_gatt_profile"
+                    )
                     return
                 await self._async_read_optional_device_info()
                 self.async_update_listeners()
                 await disconnected.wait()
-        except BleakError, OSError, TimeoutError:
+        except (BleakError, OSError, TimeoutError, NotImplementedError) as err:
+            self.connection_diagnostics["failures"] += 1
+            self.connection_diagnostics["last_error"] = type(err).__name__
             # No raw packets or health data in the logs. Sleeping devices and
             # occupied connection slots are expected; the next advertisement retries.
             _LOGGER.debug("Bluetooth session ended or could not connect")
@@ -258,7 +441,10 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
                 if characteristic := self._notifiable_characteristic(uuid):
                     await self._client.start_notify(characteristic, self._notification)
                     subscribed = True
-            return subscribed
+            if subscribed:
+                self.oximeter_protocol = "sig_plx"
+                return True
+            return await self._async_subscribe_legacy_oximeter()
         uuid = {
             DEVICE_TYPE_BLOOD_PRESSURE: BLOOD_PRESSURE_CHARACTERISTIC_UUID,
             DEVICE_TYPE_THERMOMETER: TEMPERATURE_MEASUREMENT_UUID,
@@ -270,8 +456,18 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
         ):
             _LOGGER.debug("Configured measurement profile is not available")
             return False
+        if (
+            self.device_type == DEVICE_TYPE_BLOOD_PRESSURE
+            and self.sync_time
+            and self.clock_before_subscribe
+        ):
+            await self._async_sync_clock()
         await self._client.start_notify(characteristic, self._notification)
-        if self.device_type == DEVICE_TYPE_BLOOD_PRESSURE and self.sync_time:
+        if (
+            self.device_type == DEVICE_TYPE_BLOOD_PRESSURE
+            and self.sync_time
+            and not self.clock_before_subscribe
+        ):
             await self._async_sync_clock()
         if self.device_type == DEVICE_TYPE_GLUCOSE:
             if context := self._notifiable_characteristic(GLUCOSE_CONTEXT_UUID):
@@ -289,8 +485,48 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
                     _LOGGER.debug("Stored glucose records could not be requested")
         return True
 
+    async def _async_subscribe_legacy_oximeter(self) -> bool:
+        """Initialize only a matching legacy service with all five endpoints."""
+        for service in self._client.services:
+            if not service.uuid.lower().startswith(LEGACY_OXIMETER_SERVICE_PREFIX):
+                continue
+            chars = {char.uuid.lower(): char for char in service.characteristics}
+            command = chars.get(LEGACY_OXIMETER_WRITE_UUID)
+            notify_uuids = (
+                *LEGACY_OXIMETER_CONTROL_UUIDS,
+                LEGACY_OXIMETER_MEASUREMENT_UUID,
+            )
+            if (
+                command is None
+                or not {"write", "write-without-response"} & set(command.properties)
+                or any(
+                    uuid not in chars
+                    or not {"notify", "indicate"} & set(chars[uuid].properties)
+                    for uuid in notify_uuids
+                )
+            ):
+                continue
+            for uuid in notify_uuids:
+                await self._client.start_notify(
+                    chars[uuid],
+                    self._notification
+                    if uuid == LEGACY_OXIMETER_MEASUREMENT_UUID
+                    else self._legacy_control_notification,
+                )
+            await self._client.write_gatt_char(
+                command,
+                LEGACY_OXIMETER_START,
+                response="write" in command.properties,
+            )
+            self.oximeter_protocol = "legacy_cd04"
+            return True
+        return False
+
+    def _legacy_control_notification(self, characteristic, data: bytearray) -> None:
+        """Control acknowledgements contain no decoded measurement values."""
+
     async def _async_sync_clock(self) -> None:
-        """Optionally supply Current Time after the measurement callback is ready."""
+        """Optionally supply Current Time using the configured device sequence."""
         characteristic = self._client.services.get_characteristic(CURRENT_TIME_UUID)
         if characteristic is None or not {"write", "write-without-response"} & set(
             characteristic.properties
@@ -477,7 +713,11 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             if self.device_type == DEVICE_TYPE_THERMOMETER:
                 measurement = parse_temperature_measurement(data)
             elif self.device_type == DEVICE_TYPE_PULSE_OXIMETER:
-                measurement = parse_plx(data, continuous=uuid == PLX_CONTINUOUS_UUID)
+                measurement = (
+                    parse_legacy_oximeter(data)
+                    if uuid == LEGACY_OXIMETER_MEASUREMENT_UUID
+                    else parse_plx(data, continuous=uuid == PLX_CONTINUOUS_UUID)
+                )
             elif self.device_type == DEVICE_TYPE_GLUCOSE:
                 measurement = (
                     self._glucose_decoder.context(data)
@@ -491,10 +731,52 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             else:
                 return
         except ValueError:
+            self.connection_diagnostics["malformed_packets"] += 1
             _LOGGER.debug("Ignoring malformed measurement packet (%d bytes)", len(data))
             return
         if measurement is None:
             return
+        received_at = dt_util.utcnow()
+        # A replayed weight frame must not erase already joined composition.
+        if isinstance(measurement, ScaleMeasurement):
+            candidates = [
+                self.data,
+                self._previous_user_measurement(measurement.user_id),
+            ]
+            for previous in candidates:
+                if isinstance(previous, ScaleMeasurement) and (
+                    previous.timestamp,
+                    previous.user_id,
+                    previous.raw_user_id,
+                    previous.weight,
+                ) == (
+                    measurement.timestamp,
+                    measurement.user_id,
+                    measurement.raw_user_id,
+                    measurement.weight,
+                ):
+                    measurement = replace(
+                        measurement,
+                        **{
+                            field.name: getattr(previous, field.name)
+                            for field in fields(ScaleMeasurement)
+                            if getattr(measurement, field.name) is None
+                        },
+                    )
+                    break
+        record = self.history.record(self.device_type, measurement, received_at)
+        user_updated = self._remember_user(measurement, received_at)
+        if record is not None:
+            self.hass.bus.async_fire(
+                EVENT_MEASUREMENT,
+                {
+                    "entry_id": self._entry.entry_id,
+                    "device_type": self.device_type,
+                    "measurement": record,
+                },
+            )
+        if user_updated:
+            self.async_update_listeners()
         if (
             self.device_type in USER_FILTER_DEVICE_TYPES
             and self.user_id_filter != -1
@@ -535,7 +817,7 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
         # same value and timestamp again, so payload equality cannot reliably
         # distinguish a new measurement from a retransmission.
         self.measurement_sequence += 1
-        self.received_at = dt_util.utcnow()
+        self.received_at = received_at
         if measurement.timestamp is not None and (
             self.latest_timestamp is None
             or measurement.timestamp > self.latest_timestamp
@@ -547,6 +829,8 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
 
     async def async_stop(self) -> None:
         """Cancel callbacks, timer and any connection, also during shutdown."""
+        if self._stopped:
+            return
         self._stopped = True
         for unsubscribe in self._unsubscribers:
             unsubscribe()
@@ -559,3 +843,4 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             # The coroutine's finally block cannot run if it was cancelled
             # before its first turn on the event loop.
             self._task = None
+        await self.history.async_flush()

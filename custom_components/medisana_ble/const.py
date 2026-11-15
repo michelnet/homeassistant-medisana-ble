@@ -59,3 +59,24 @@ DEVICE_INFORMATION_CHARACTERISTIC_UUIDS = {
 
 RETRY_INTERVAL = 15
 SESSION_TIMEOUT = 180
+
+# Connection tuning is explicit: device names and firmware variants are unreliable.
+CONF_CONNECTION_TIMEOUT = "connection_timeout"
+CONF_CONNECTION_ATTEMPTS = "connection_attempts"
+CONF_PAIR = "pair"
+CONF_CLOCK_BEFORE_SUBSCRIBE = "clock_before_subscribe"
+CONF_SEPARATE_USERS = "separate_user_sensors"
+CONF_HISTORY_LIMIT = "history_limit"
+DEFAULT_HISTORY_LIMIT = 200
+EVENT_MEASUREMENT = f"{DOMAIN}_measurement"
+
+# Older PM 150 BLE measurement interface; the UUID suffix varies by device.
+LEGACY_OXIMETER_SERVICE_PREFIX = "ba11f08c-5f14-0b0d-"
+LEGACY_OXIMETER_MEASUREMENT_UUID = "0000cd04-0000-1000-8000-00805f9b34fb"
+LEGACY_OXIMETER_CONTROL_UUIDS = (
+    "0000cd01-0000-1000-8000-00805f9b34fb",
+    "0000cd02-0000-1000-8000-00805f9b34fb",
+    "0000cd03-0000-1000-8000-00805f9b34fb",
+)
+LEGACY_OXIMETER_WRITE_UUID = "0000cd20-0000-1000-8000-00805f9b34fb"
+LEGACY_OXIMETER_START = bytes.fromhex("aa5504b10000b5")

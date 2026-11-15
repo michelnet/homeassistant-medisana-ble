@@ -79,3 +79,20 @@ def parse_plx(data: bytes, *, continuous: bool = False) -> PulseOximeterMeasurem
         pulse_amplitude_index=amplitude,
         measurement_type="continuous" if continuous else "spot_check",
     )
+
+
+def parse_legacy_oximeter(data: bytes) -> PulseOximeterMeasurement:
+    """Read the older PM 150 CD04 value, independently of the SIG PLX layout.
+
+    Protocol facts: Tanaskoska et al., AIIT 2019, pp. 55–57; field offsets
+    independently cross-checked against VitaDock+ 2.9.42's native metadata.
+    The remaining vendor fields have no verified interpretation and are ignored.
+    """
+    if not 5 <= len(data) <= 20:
+        raise ValueError("Incomplete or oversized legacy oximeter measurement")
+    saturation, pulse = data[3], data[4]
+    return PulseOximeterMeasurement(
+        oxygen_saturation=float(saturation) if 0 < saturation <= 100 else None,
+        pulse=float(pulse) if 0 < pulse < 255 else None,
+        measurement_type="legacy_cd04",
+    )

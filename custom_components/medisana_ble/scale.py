@@ -28,7 +28,7 @@ class ScaleMeasurement:
     """Weight and composition for one timestamp and one scale user."""
 
     weight: float
-    user_id: int
+    user_id: int | None
     timestamp: datetime
     body_fat: float | None = None
     body_water: float | None = None
@@ -36,6 +36,7 @@ class ScaleMeasurement:
     bone_mass: float | None = None
     basal_metabolism: int | None = None
     bmi: float | None = None
+    raw_user_id: int | None = None
 
 
 def scale_time_command(now: datetime, epoch: str) -> bytes:
@@ -91,14 +92,19 @@ class ScaleDecoder:
             weight = int.from_bytes(data[1:3], "little") / 100
             seconds = int.from_bytes(data[5:9], "little")
             user = data[13]
-            if not 0 < weight <= 400 or not 0 <= user <= 8:
+            if not 0 < weight <= 400 or user not in (*range(9), 255):
                 raise ValueError("Invalid scale weight or user")
             timestamp = datetime.fromtimestamp(seconds + self.epoch, UTC)
-            result = ScaleMeasurement(weight=weight, user_id=user, timestamp=timestamp)
+            result = ScaleMeasurement(
+                weight=weight,
+                user_id=None if user == 255 else user,
+                timestamp=timestamp,
+                raw_user_id=user,
+            )
             if height := self._heights.get(user):
                 result = replace(result, bmi=round(weight / (height / 100) ** 2, 1))
             key = (seconds, user)
-            if body := self._bodies.get(key):
+            if user != 255 and (body := self._bodies.get(key)):
                 result = replace(result, **body)
             self._remember(self._weights, key, result)
             return result
@@ -108,8 +114,13 @@ class ScaleDecoder:
             seconds, user, kcal, fat, water, muscle, bone = unpack_from(
                 "<IBHHHHH", data, 1
             )
-            if not 0 <= user <= 8:
+            if user not in (*range(9), 255):
                 raise ValueError("Invalid scale body user")
+
+            # BS 550 guest frames contain zero-filled composition fields.
+            # Preserve the weight, but never present these as body measurements.
+            if user == 255:
+                return None
 
             def percentage(raw: int) -> float | None:
                 value = (raw & 0x0FFF) / 10

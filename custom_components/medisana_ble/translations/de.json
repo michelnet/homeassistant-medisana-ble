@@ -55,13 +55,19 @@
   "options": {
     "step": {
       "init": {
-        "title": "Benutzer und Waagenuhr",
-        "description": "Mit -1 empfängst du alle Benutzer. Wähle die übertragene Bluetooth-Benutzer-ID für eine einzelne Person; sie kann von der Anzeige am Gerät abweichen. Bei klassischen Waagen: 2010 für BS 410/444, 1970 für BS 430/440. Der Zeitursprung muss zum Waagenmodell passen. Nach einer Änderung des Benutzerfilters bleiben die Sensoren bis zur nächsten passenden Messung unbekannt. Die Wartezeit lässt der Waage Zeit für die Körperanalyse; Standard: 12 Sekunden. Bei Blutdruckmessgeräten kannst du optional die Uhr mit Home Assistant synchronisieren, wenn das Gerät dies unterstützt.",
+        "title": "Verbindung, Benutzer und Verlauf",
+        "description": "Die Benutzer-ID ist die unveränderte Bluetooth-ID; sie kann von der Anzeige am Gerät abweichen. -1 zeigt alle Benutzer. Separate Benutzersensoren ergänzen Gruppen für bekannte IDs (Waagen: 1–8); Gastmessungen bleiben unzugeordnet. Verlauf: 0 deaktiviert die Speicherung und entfernt den bisherigen Verlauf, sonst werden bis zu 1000 Einträge lokal gespeichert (Standard 200). BS A45: bei Bedarf 3 Sekunden Verbindungszeit und 10 Versuche testen. BU 572: bei Bedarf Kopplung, Zeitsynchronisation und Uhr vor Benachrichtigungen aktivieren. Kopplung benötigt Unterstützung durch den Bluetooth-Adapter. Bei Waagen die passende Zeitbasis wählen (BS 410/444: 2010; BS 430/440: 1970; Varianten möglich). Die Verbindungsverzögerung lässt die Körperanalyse fertig werden (Standard 12 Sekunden).",
         "data": {
           "user_id": "Bluetooth-Benutzer-ID (-1 = alle)",
           "scale_epoch": "Zeitursprung der Waage",
           "connection_delay": "Wartezeit vor der Verbindung (Sekunden)",
-          "sync_time": "Geräteuhr synchronisieren"
+          "sync_time": "Geräteuhr synchronisieren",
+          "connection_timeout": "Zeitlimit pro Verbindungsversuch (Sekunden)",
+          "connection_attempts": "Maximale Verbindungsversuche",
+          "pair": "Bluetooth-Kopplung anfordern",
+          "clock_before_subscribe": "Uhr vor Messwertbenachrichtigungen setzen",
+          "separate_user_sensors": "Separate Sensoren je Benutzer",
+          "history_limit": "Maximale lokale Verlaufseinträge (0 = aus)"
         }
       }
     },
@@ -69,7 +75,10 @@
       "invalid_user_id": "Gib eine ganze Zahl von -1 bis 254 ein.",
       "invalid_scale_epoch": "Wähle 1970 oder 2010 passend zum Waagenmodell.",
       "invalid_scale_user_id": "Gib eine ganze Zahl von -1 bis 8 ein.",
-      "invalid_connection_delay": "Gib eine ganze Zahl von 0 bis 30 ein."
+      "invalid_connection_delay": "Gib eine ganze Zahl von 0 bis 30 ein.",
+      "invalid_connection_timeout": "Gib eine ganze Zahl von 3 bis 60 ein.",
+      "invalid_connection_attempts": "Gib eine ganze Zahl von 1 bis 10 ein.",
+      "invalid_history_limit": "Gib eine ganze Zahl von 0 bis 1000 ein."
     },
     "abort": {
       "no_options_available": "Für dieses Gerät sind keine Einstellungen verfügbar."
@@ -150,6 +159,21 @@
       "options": {
         "1970": "1970 (BS 430 / BS 440)",
         "2010": "2010 (BS 410 / BS 444)"
+      }
+    }
+  },
+  "services": {
+    "export_history": {
+      "name": "Messwertverlauf als CSV exportieren",
+      "description": "Gibt lokal gespeicherte Messungen als CSV zurück. Erfordert Administratorrechte. Den Inhalt von csv als UTF-8-Datei mit Endung .csv speichern.",
+      "fields": {
+        "entry_id": {
+          "name": "Gerät"
+        },
+        "user_id": {
+          "name": "Bluetooth-Benutzer-ID",
+          "description": "Optional. Ohne Filter werden alle Benutzer einschließlich Gäste exportiert."
+        }
       }
     }
   }
