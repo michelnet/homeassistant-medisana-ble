@@ -9,10 +9,10 @@ import json
 from dataclasses import asdict
 from datetime import datetime
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN
 
@@ -95,7 +95,7 @@ class MeasurementHistory:
         values = asdict(measurement)
         timestamp = measurement.timestamp
         if timestamp is not None and timestamp.tzinfo is None:
-            timestamp = timestamp.replace(tzinfo=ZoneInfo(self.hass.config.time_zone))
+            timestamp = timestamp.replace(tzinfo=dt_util.get_default_time_zone())
         values["timestamp"] = timestamp.isoformat() if timestamp is not None else None
         values["device_type"] = device_type
         # Scale characteristics describe one reading in several packets.

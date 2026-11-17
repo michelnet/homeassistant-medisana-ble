@@ -12,7 +12,6 @@ from datetime import datetime, timedelta
 from struct import pack
 from time import monotonic
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from bleak import BleakClient, BleakError
 from bleak.backends.characteristic import BleakGATTCharacteristic
@@ -202,7 +201,7 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
                 if cls is BloodPressureMeasurement:
                     values["timestamp"] = (
                         values["timestamp"]
-                        .astimezone(ZoneInfo(self.hass.config.time_zone))
+                        .astimezone(dt_util.get_default_time_zone())
                         .replace(tzinfo=None)
                     )
             measurement = cls(**values)
@@ -264,9 +263,9 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
         if timestamp is None:
             return None
         if self.device_type == DEVICE_TYPE_BLOOD_PRESSURE:
-            timestamp = timestamp.astimezone(
-                ZoneInfo(self.hass.config.time_zone)
-            ).replace(tzinfo=None)
+            timestamp = timestamp.astimezone(dt_util.get_default_time_zone()).replace(
+                tzinfo=None
+            )
             cls = BloodPressureMeasurement
         else:
             if restored.get("weight") is None:
@@ -532,7 +531,7 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
             characteristic.properties
         ):
             return
-        now = dt_util.utcnow().astimezone(ZoneInfo(self.hass.config.time_zone))
+        now = dt_util.utcnow().astimezone(dt_util.get_default_time_zone())
         # Bluetooth Current Time: Exact Time 256 followed by Adjust Reason.
         value = pack(
             "<H8B",
@@ -672,7 +671,7 @@ class MedisanaCoordinator(DataUpdateCoordinator[MedisanaMeasurement]):
         elif not isinstance(value, datetime):
             return
         if value.tzinfo is not None:
-            value = value.astimezone(ZoneInfo(self.hass.config.time_zone)).replace(
+            value = value.astimezone(dt_util.get_default_time_zone()).replace(
                 tzinfo=None
             )
         if self._restored_timestamp is not None and value < self._restored_timestamp:

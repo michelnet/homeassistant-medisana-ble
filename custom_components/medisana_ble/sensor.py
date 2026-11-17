@@ -5,7 +5,6 @@ from __future__ import annotations
 import re
 from datetime import datetime
 from typing import Any
-from zoneinfo import ZoneInfo
 
 from homeassistant.components.sensor import (
     RestoreSensor,
@@ -25,6 +24,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
     DEVICE_TYPE_BLOOD_PRESSURE,
@@ -484,4 +484,4 @@ class MedisanaSensor(CoordinatorEntity[MedisanaCoordinator], RestoreSensor):
         """Interpret Bluetooth Date Time in the Home Assistant time zone."""
         if timestamp is None or timestamp.tzinfo is not None:
             return timestamp
-        return timestamp.replace(tzinfo=ZoneInfo(self.hass.config.time_zone))
+        return timestamp.replace(tzinfo=dt_util.get_default_time_zone())
