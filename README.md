@@ -90,11 +90,11 @@ device for transfers and close VitaDock+ or other clients connected to it.
 | Method | Steps |
 | --- | --- |
 | **Marketplace — HA 2026.11+** | Open **Settings → Marketplace → Add from link**, add `https://github.com/michelnet/homeassistant-medisana-ble`, connect GitHub if prompted, and install **Medisana BLE**. |
-| **HACS — HA 2026.9–2026.10** | Add the same URL under **HACS → Custom repositories**, category **Integration**, then download **Medisana BLE**. |
+| **HACS — HA 2026.9–2026.10** | Open **HACS**, search for **Medisana BLE**, and download it. No custom repository is required. |
 | **Manual** | Copy [`custom_components/medisana_ble`](custom_components/medisana_ble) to `/config/custom_components/medisana_ble`. |
 
 Restart Home Assistant if prompted, or after HACS/manual installation.
-Marketplace installation from a link does not require default-catalog inclusion.
+Medisana BLE is included in the [default HACS catalog](https://github.com/hacs/default/pull/14163).
 Existing HACS installations migrate with Home Assistant 2026.11; see the
 [official migration guide](https://www.home-assistant.io/integrations/marketplace/#coming-from-hacs).
 
